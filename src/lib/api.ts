@@ -26,7 +26,18 @@ export async function getSession() {
 export async function fetchCurrentUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase.from("pn_usuarios").select("*").eq("id", user.id).maybeSingle();
+  let { data } = await supabase.from("pn_usuarios").select("*").eq("id", user.id).maybeSingle();
+  if (!data) {
+    // Auto-create profile for first admin login
+    const { data: created } = await supabase.from("pn_usuarios").insert({
+      id: user.id,
+      nome: user.email?.split("@")[0] || "Admin",
+      email: user.email,
+      role: "admin",
+      ativo: true,
+    }).select().single();
+    data = created;
+  }
   return data;
 }
 
