@@ -32,28 +32,28 @@ export default function AdminPanel({ user }: { user: any }) {
     setSavingUser(true);
     setUserMsg("");
     try {
-      const { data, error: signUpErr } = await supabase.auth.admin?.createUser
-        ? await (supabase.auth as any).admin.createUser({ email: novoEmail, password: novoSenha, email_confirm: true })
-        : { data: null, error: new Error("Admin API não disponível no client") };
-
-      if (signUpErr || !data?.user) {
-        // Fallback: instrução manual
-        setUserMsg(`Crie o usuário manualmente no Supabase Auth e insira o perfil na tabela pn_usuarios com role="${novoRole}" e nome="${novoNome}"`);
-        setSavingUser(false);
-        return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL?.trim() || "https://pvphgusjofufwtyiyviu.supabase.co"}/functions/v1/criar-usuario`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ nome: novoNome, email: novoEmail, password: novoSenha, role: novoRole }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setUserMsg(`Erro: ${json.error || "tente novamente"}`);
+      } else {
+        setUserMsg("✅ Usuário criado com sucesso!");
+        setNovoEmail(""); setNovoNome(""); setNovoSenha(""); setNovoRole("secretaria");
+        load();
       }
-
-      await supabase.from("pn_usuarios").insert({
-        id: data.user.id,
-        nome: novoNome,
-        email: novoEmail,
-        role: novoRole,
-      });
-      setUserMsg("Usuário criado com sucesso!");
-      setNovoEmail(""); setNovoNome(""); setNovoSenha(""); setNovoRole("secretaria");
-      load();
-    } catch {
-      setUserMsg("Erro ao criar usuário. Crie manualmente no Supabase Auth.");
+    } catch (err) {
+      setUserMsg("Erro de conexão. Tente novamente.");
     }
     setSavingUser(false);
   }
