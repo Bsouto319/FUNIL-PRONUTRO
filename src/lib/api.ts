@@ -110,7 +110,7 @@ export async function sendMessage(leadId: string, phone: string, text: string, s
     const res = await fetch(`${baseUrl}/send/text`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: phone, text }),
+      body: JSON.stringify({ number: phone, text: senderNome ? `*${senderNome}:*\n${text}` : text }),
     });
     if (res.ok) {
       await supabase.from("pn_mensagens").insert({
