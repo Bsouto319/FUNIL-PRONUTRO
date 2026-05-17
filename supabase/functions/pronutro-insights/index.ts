@@ -153,14 +153,20 @@ async function runInsights() {
   return { ok: true, score: gpt.score_saude, oportunidade_perdida: metricas.totalOportunidadePerdida };
 }
 
+const CORS = {
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
+};
+
 Deno.serve(async (_req) => {
-  const cors = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
-  if (_req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (_req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     const result = await runInsights();
-    return new Response(JSON.stringify(result), { headers: cors });
+    return new Response(JSON.stringify(result), { headers: CORS });
   } catch (err) {
     console.error("insights error", err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: cors });
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: CORS });
   }
 });

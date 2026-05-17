@@ -180,14 +180,9 @@ export async function fetchLatestInsight() {
 }
 
 export async function generateInsight(): Promise<boolean> {
-  const url = (import.meta.env.VITE_SUPABASE_URL?.trim() || "https://pvphgusjofufwtyiyviu.supabase.co")
-    + "/functions/v1/pronutro-insights";
-  const { data: { session } } = await supabase.auth.getSession();
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
-  });
-  return res.ok;
+  const { error } = await supabase.functions.invoke("pronutro-insights", { method: "POST" });
+  if (error) console.error("generateInsight", error);
+  return !error;
 }
 
 export async function updateAgendamentoStatus(id: string, status: "confirmado" | "cancelado" | "no_show" | "realizado"): Promise<boolean> {
