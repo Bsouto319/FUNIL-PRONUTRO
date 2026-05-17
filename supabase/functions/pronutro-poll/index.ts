@@ -176,10 +176,58 @@ async function processReceiptImage(msg: any): Promise<void> {
 
 // ── Maria IA ──────────────────────────────────────────────────────────────────
 
-function getSaudacao(): string {
+function getSaudacao(nome?: string | null): string {
   const h  = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
   const oi = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
   return `${oi}! 😊\n\nMeu nome é Maria e serei responsável pelo seu atendimento a partir de agora.\n\nSomos uma clínica especializada em nutrologia, endocrinologia, proctologia, pediatria, clínica médica da família, psiquiatria e saúde da mulher.\n\nPara te direcionar ao profissional mais adequado, poderia nos informar qual a finalidade da consulta e o motivo da sua procura?\n\nComo conheceu a nossa clínica? 💚`;
+}
+
+/** Monta o bloco de contexto do paciente recorrente para incluir no prompt da Maria */
+async function buildPatientContext(leadId: string): Promise<string> {
+  const [agendRaw, notasRaw] = await Promise.all([
+    db.from("pn_agendamentos")
+      .select("data_hora, status, pn_medicos(nome)")
+      .eq("lead_id", leadId)
+      .order("data_hora", { ascending: false })
+      .limit(10),
+    db.from("pn_leads")
+      .select("notas, medico_preferido, total_consultas")
+      .eq("id", leadId)
+      .single(),
+  ]);
+
+  const agendamentos = agendRaw.data ?? [];
+  const perfil       = notasRaw.data;
+
+  if (!agendamentos.length && !perfil?.notas) return "";
+
+  const linhas: string[] = [];
+
+  if (agendamentos.length > 0) {
+    const realizados  = agendamentos.filter((a: any) => a.status === "realizado");
+    const confirmados = agendamentos.filter((a: any) => a.status === "confirmado");
+    const proxima     = confirmados[0];
+    const ultima      = realizados[0];
+
+    linhas.push(`## PERFIL DO PACIENTE (use para personalizar — não leia em voz alta)`);
+
+    if (proxima) {
+      const dt = new Date(proxima.data_hora).toLocaleDateString("pt-BR");
+      const med = (proxima as any).pn_medicos?.nome || "médico";
+      linhas.push(`• Consulta confirmada: ${dt} com ${med}`);
+    }
+    if (ultima) {
+      const dt = new Date(ultima.data_hora).toLocaleDateString("pt-BR");
+      const med = (ultima as any).pn_medicos?.nome || "médico";
+      linhas.push(`• Última consulta realizada: ${dt} com ${med}`);
+    }
+    if (perfil?.medico_preferido) linhas.push(`• Médico de preferência: ${perfil.medico_preferido}`);
+    if (realizados.length > 0)    linhas.push(`• Total de consultas realizadas: ${realizados.length}`);
+  }
+
+  if (perfil?.notas) linhas.push(`• Observações: ${perfil.notas}`);
+
+  return linhas.length > 0 ? "\n\n" + linhas.join("\n") : "";
 }
 
 const MARIA_SYSTEM = `Você é Maria, atendente virtual da Clínica ProNutro em Brasília.
@@ -208,6 +256,13 @@ Caso esteja dentro do prazo, poderia me informar qual seria a medicação e qual
 
 Se o paciente confirmar que está dentro do prazo → anote a medicação e o médico → ofereça agendar retorno se necessário.
 
+## PACIENTE RECORRENTE
+Se o PERFIL DO PACIENTE estiver presente no contexto, o paciente já é conhecido da clínica.
+- Cumprimente pelo primeiro nome se souber: "Oi [nome]! Que saudade! 😊"
+- Mencione naturalmente o histórico quando útil: "Sei que você já consultou com o Dr. Augusto, quer continuar com ele?"
+- Nunca peça informações que já constam no perfil
+- Se ele já tem consulta confirmada → confirme a data e pergunte o que precisa
+
 ## PACIENTE JÁ AGENDADO
 Se o histórico mostrar consulta marcada e o paciente enviar nova mensagem:
 - Pergunta sobre consulta existente → responda normalmente
@@ -229,7 +284,7 @@ Se o histórico mostrar consulta marcada e o paciente enviar nova mensagem:
 - NUNCA invente horários disponíveis
 
 ## RESPOSTA (sempre JSON):
-{"message":"texto","stage":"novo_lead|maria_ia|interesse_real|agendado|perdido","action":"none|criar_agendamento|perdido","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null"}`;
+{"message":"texto","stage":"novo_lead|maria_ia|interesse_real|agendado|perdido","action":"none|criar_agendamento|perdido","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação importante para lembrar do paciente ou null","medico_preferido":"nome do médico preferido ou null"}`;
 
 async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
   // Só responde em horário comercial (7h–22h Brasília)
@@ -246,7 +301,7 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
   if ((recentOut ?? 0) > 0) { console.log(`Cooldown → ${lead.phone}`); return; }
 
   if (isNew) {
-    const saud = getSaudacao();
+    const saud = getSaudacao(lead.name);
     await setPresence(lead.phone, "composing");
     await sleep(typingDuration(saud.length));
     await setPresence(lead.phone, "paused");
@@ -267,18 +322,22 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
     .gt("created_at", lastIn.created_at);
   if ((outAfter ?? 0) > 0) { console.log(`Já respondeu → ${lead.phone}`); return; }
 
-  // Histórico para GPT
-  const { data: msgs } = await db.from("pn_mensagens")
-    .select("direction, body").eq("lead_id", lead.id)
-    .order("created_at", { ascending: true }).limit(30);
+  // Histórico + contexto do paciente para GPT
+  const [msgsRaw, patientCtx] = await Promise.all([
+    db.from("pn_mensagens")
+      .select("direction, body").eq("lead_id", lead.id)
+      .order("created_at", { ascending: true }).limit(30),
+    buildPatientContext(lead.id),
+  ]);
 
-  const history = (msgs ?? []).map((m: any) => ({
+  const history = (msgsRaw.data ?? []).map((m: any) => ({
     role: m.direction === "in" ? "user" : "assistant",
     content: m.body,
   }));
 
-  const brNow  = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const brNow   = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const dateStr = brNow.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const sysContent = `${MARIA_SYSTEM}${patientCtx}\n\nHoje: ${dateStr}`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -286,7 +345,7 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
     body: JSON.stringify({
       model: "gpt-4o",
       response_format: { type: "json_object" },
-      messages: [{ role: "system", content: `${MARIA_SYSTEM}\n\nHoje: ${dateStr}` }, ...history],
+      messages: [{ role: "system", content: sysContent }, ...history],
     }),
   });
   if (!res.ok) { console.error("GPT error", res.status); return; }
@@ -295,7 +354,7 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
   let parsed: any;
   try { parsed = JSON.parse(aiData.choices[0].message.content); } catch { return; }
 
-  const { message, stage, action, medico_nome, data_hora, nome_paciente } = parsed;
+  const { message, stage, action, medico_nome, data_hora, nome_paciente, notas_paciente, medico_preferido } = parsed;
   if (!message) return;
 
   const lastMsgLen = (lastIn.body || "").length;
@@ -306,7 +365,9 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
 
   const updates: any = { updated_at: new Date().toISOString() };
   if (stage && VALID_STAGES.includes(stage) && !PROTECTED_STAGES.includes(lead.stage)) updates.stage = stage;
-  if (nome_paciente && !lead.name) updates.name = nome_paciente;
+  if (nome_paciente && !lead.name)   updates.name = nome_paciente;
+  if (notas_paciente)                updates.notas = notas_paciente;
+  if (medico_preferido)              updates.medico_preferido = medico_preferido;
   await db.from("pn_leads").update(updates).eq("id", lead.id);
 
   if (action === "criar_agendamento" && medico_nome && data_hora) {
@@ -318,7 +379,14 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
         duracao_min: 30, status: "confirmado",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       });
-      await db.from("pn_leads").update({ stage: "agendado", updated_at: new Date().toISOString() }).eq("id", lead.id);
+      // Atualiza médico preferido e contador de consultas
+      const { data: ldCur } = await db.from("pn_leads").select("total_consultas").eq("id", lead.id).single();
+      await db.from("pn_leads").update({
+        stage: "agendado",
+        medico_preferido: medico_nome,
+        total_consultas: ((ldCur?.total_consultas ?? 0) + 1),
+        updated_at: new Date().toISOString(),
+      }).eq("id", lead.id);
       console.log(`Agendamento criado → ${lead.phone} ${medico_nome} ${data_hora}`);
     }
   }
@@ -370,7 +438,7 @@ async function runPoll() {
       (m.text || m.content?.text || m.body);
   });
 
-  console.log(`pronutro-poll v10: lastTs=${lastTs} total=${all.length} new=${newMsgs.length}`);
+  console.log(`pronutro-poll v12: lastTs=${lastTs} total=${all.length} new=${newMsgs.length}`);
 
   if (!newMsgs.length && !imageMsgs.length) {
     await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
