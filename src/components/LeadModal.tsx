@@ -252,7 +252,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
             {medicoSel && (
               <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-xs">
                 <p className="text-violet-300 font-bold">{medicoSel.nome}</p>
-                <p className="text-white/50">{medicoSel.especialidade} · R$ {medicoSel.valor_particular}</p>
+                <p className="text-white/50">{medicoSel.especialidade} · R$ {medicoSel.valor}</p>
               </div>
             )}
             {slots.length > 0 ? (
