@@ -316,6 +316,7 @@ export default function AdminPanel({ user }: { user: any }) {
                 <Plus size={13} /> Novo Médico
               </button>
             )}
+          </div>
 
         ) : tab === "horarios" ? (
           /* ── Aba Horários ── */
