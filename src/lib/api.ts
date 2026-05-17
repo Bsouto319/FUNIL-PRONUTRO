@@ -46,7 +46,7 @@ export async function fetchCurrentUser() {
 export async function fetchLeads(search = "") {
   let q = supabase
     .from("pn_leads")
-    .select("*, responsavel:pn_usuarios(id, nome, role), medico:pn_medicos(id, nome)")
+    .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .order("created_at", { ascending: false });
   if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
   const { data, error } = await q;
@@ -136,12 +136,71 @@ export async function fetchMedicos() {
   return data || [];
 }
 
+export async function upsertMedico(m: {
+  id?: string; nome: string; especialidade: string; valor: number;
+  aceita_convenio: boolean; cor: string;
+}): Promise<boolean> {
+  if (m.id) {
+    const { error } = await supabase.from("pn_medicos")
+      .update({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor })
+      .eq("id", m.id);
+    return !error;
+  }
+  const { error } = await supabase.from("pn_medicos")
+    .insert({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ativo: true });
+  return !error;
+}
+
+export async function desativarMedico(id: string): Promise<boolean> {
+  const { error } = await supabase.from("pn_medicos").update({ ativo: false }).eq("id", id);
+  return !error;
+}
+
+export async function createLead(data: {
+  name: string; phone: string; stage?: string; ai_mode?: boolean; first_message?: string;
+}): Promise<boolean> {
+  const { error } = await supabase.from("pn_leads").insert({
+    name: data.name,
+    phone: data.phone.replace(/\D/g, ""),
+    stage: data.stage || "novo_lead",
+    ai_mode: data.ai_mode ?? false,
+    first_message: data.first_message || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  return !error;
+}
+
+// ── Insights / Relatório ──────────────────────────────────────────────────────
+
+export async function fetchLatestInsight() {
+  const { data } = await supabase.from("pn_insights")
+    .select("*").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return data || null;
+}
+
+export async function generateInsight(): Promise<boolean> {
+  const url = (import.meta.env.VITE_SUPABASE_URL?.trim() || "https://pvphgusjofufwtyiyviu.supabase.co")
+    + "/functions/v1/pronutro-insights";
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+  });
+  return res.ok;
+}
+
+export async function updateAgendamentoStatus(id: string, status: "confirmado" | "cancelado" | "no_show" | "realizado"): Promise<boolean> {
+  const { error } = await supabase.from("pn_agendamentos").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  return !error;
+}
+
 // ── Agendamentos ──────────────────────────────────────────────────────────────
 
 export async function fetchAgendamentos(from?: string, to?: string) {
   let q = supabase
     .from("pn_agendamentos")
-    .select("*, medico:pn_medicos(id, nome), lead:pn_leads(id, name, phone)")
+    .select("*, medico:pn_medicos(id, nome, especialidade, valor, aceita_convenio, cor), lead:pn_leads(id, name, whatsapp_name, phone)")
     .eq("status", "confirmado")
     .order("data_hora", { ascending: true });
   if (from) q = q.gte("data_hora", from);
@@ -209,6 +268,30 @@ export async function fetchSlotsDisponiveis(medicoId: string, data: string) {
   return slots;
 }
 
+export async function fetchDisponibilidade(medicoId: string) {
+  const { data, error } = await supabase
+    .from("pn_disponibilidade")
+    .select("*")
+    .eq("medico_id", medicoId)
+    .order("dia_semana");
+  if (error) console.error("fetchDisponibilidade", error.message);
+  return data || [];
+}
+
+export async function upsertDisponibilidade(payload: {
+  medico_id: string;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  ativo: boolean;
+}) {
+  const { error } = await supabase
+    .from("pn_disponibilidade")
+    .upsert(payload, { onConflict: "medico_id,dia_semana" });
+  if (error) console.error("upsertDisponibilidade", error.message);
+  return !error;
+}
+
 // ── Maria Global Mode ─────────────────────────────────────────────────────────
 
 export async function fetchMariaGlobalMode(): Promise<boolean> {
@@ -242,6 +325,296 @@ export async function fetchUsuarios() {
   const { data, error } = await supabase.from("pn_usuarios").select("*").order("nome");
   if (error) console.error("fetchUsuarios", error.message);
   return data || [];
+}
+
+// ── Financeiro ────────────────────────────────────────────────────────────────
+
+export async function fetchFinanceiro({ from, to, medicoId }: { from: string; to: string; medicoId?: string }) {
+  let q = supabase
+    .from("pn_financeiro")
+    .select("*")
+    .gte("data_pagamento", from)
+    .lte("data_pagamento", to)
+    .order("data_pagamento", { ascending: false });
+  if (medicoId) q = q.eq("medico_id", medicoId);
+  const { data, error } = await q;
+  if (error) console.error("fetchFinanceiro", error.message);
+  return data || [];
+}
+
+export async function insertFinanceiro(payload: {
+  medico_id?: string;
+  nome_paciente?: string;
+  medico_nome?: string;
+  valor: number;
+  forma_pagamento?: string;
+  bandeira?: string;
+  parcelas?: number;
+  data_pagamento?: string;
+  observacoes?: string;
+}) {
+  const { data, error } = await supabase.from("pn_financeiro").insert({
+    ...payload,
+    parcelas: payload.parcelas || 1,
+    data_pagamento: payload.data_pagamento || new Date().toISOString(),
+    registrado_por: "manual",
+  }).select().single();
+  if (error) console.error("insertFinanceiro", error.message);
+  return data;
+}
+
+export async function deleteFinanceiro(id: string) {
+  const { error } = await supabase.from("pn_financeiro").delete().eq("id", id);
+  if (error) console.error("deleteFinanceiro", error.message);
+}
+
+export async function bulkInsertFinanceiro(rows: object[]) {
+  const { error } = await supabase.from("pn_financeiro").insert(rows);
+  if (error) console.error("bulkInsertFinanceiro", error.message);
+  return !error;
+}
+
+// ── Notas Fiscais ─────────────────────────────────────────────────────────────
+
+export async function fetchNotasFiscais(params: { leadId?: string; nomePaciente?: string }) {
+  let q = supabase.from("pn_notas_fiscais").select("*").order("created_at", { ascending: false });
+  if (params.leadId) q = q.eq("lead_id", params.leadId);
+  else if (params.nomePaciente) q = q.ilike("nome_paciente", `%${params.nomePaciente}%`);
+  const { data, error } = await q;
+  if (error) console.error("fetchNotasFiscais", error.message);
+  return data || [];
+}
+
+export async function uploadNotaFiscal(params: {
+  file: File;
+  leadId?: string;
+  medicoId?: string;
+  nomePaciente?: string;
+  numeroNf?: string;
+  dataEmissao?: string;
+  valor?: number;
+  observacoes?: string;
+  uploadedBy?: string;
+}) {
+  const ext  = params.file.name.split(".").pop() || "pdf";
+  const path = `${params.leadId || "avulso"}/${Date.now()}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("notas-fiscais")
+    .upload(path, params.file, { contentType: params.file.type || "application/pdf" });
+  if (upErr) { console.error("uploadNotaFiscal storage", upErr.message); return null; }
+
+  const { data, error } = await supabase.from("pn_notas_fiscais").insert({
+    lead_id:       params.leadId      || undefined,
+    medico_id:     params.medicoId    || undefined,
+    nome_paciente: params.nomePaciente || undefined,
+    numero_nf:     params.numeroNf    || undefined,
+    data_emissao:  params.dataEmissao || undefined,
+    valor:         params.valor       || undefined,
+    observacoes:   params.observacoes || undefined,
+    file_name:     params.file.name,
+    file_path:     path,
+    mime_type:     params.file.type   || "application/pdf",
+    file_size:     params.file.size,
+    uploaded_by:   params.uploadedBy  || undefined,
+  }).select().single();
+  if (error) console.error("uploadNotaFiscal insert", error.message);
+  return data;
+}
+
+export async function getNotaFiscalUrl(filePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from("notas-fiscais")
+    .createSignedUrl(filePath, 600);
+  if (error) { console.error("getNotaFiscalUrl", error.message); return null; }
+  return data.signedUrl;
+}
+
+export async function deleteNotaFiscal(id: string, filePath: string) {
+  await supabase.storage.from("notas-fiscais").remove([filePath]);
+  const { error } = await supabase.from("pn_notas_fiscais").delete().eq("id", id);
+  if (error) console.error("deleteNotaFiscal", error.message);
+}
+
+export async function fetchPacientesFinanceiro(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("pn_financeiro")
+    .select("nome_paciente")
+    .not("nome_paciente", "is", null)
+    .neq("nome_paciente", "");
+  if (error) console.error("fetchPacientesFinanceiro", error.message);
+  const nomes = [...new Set((data || []).map((r: any) => r.nome_paciente as string))];
+  return nomes.sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+// ── Import de Agendamentos via Excel ─────────────────────────────────────────
+
+export type ImportRow = {
+  nome:      string;
+  telefone:  string;
+  medico:    string;
+  data:      string;
+  hora:      string;
+  tipo:      string;
+  valor:     number | null;
+  pagamento: string;
+  parcelas:  number;
+  obs:       string;
+};
+
+export type ImportResult = ImportRow & {
+  status:   "vinculado" | "novo_lead" | "sem_lead" | "erro";
+  msg:      string;
+  leadId:   string | null;
+  medicoId: string | null;
+};
+
+function normPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length <= 9) return digits;
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  if (digits.startsWith("0")) return "55" + digits.slice(1);
+  return "55" + digits;
+}
+
+function nameSim(a: string, b: string): number {
+  const clean = (s: string) =>
+    s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  const ta = clean(a).split(/\s+/).filter(Boolean);
+  const tb = clean(b).split(/\s+/).filter(Boolean);
+  if (!ta.length || !tb.length) return 0;
+  const matches = ta.filter(w => tb.some(w2 => w2.startsWith(w) || w.startsWith(w2)));
+  return matches.length / Math.max(ta.length, tb.length);
+}
+
+function parseDataHora(data: string, hora: string): string | null {
+  let d: Date | null = null;
+  // DD/MM/YYYY ou DD-MM-YYYY
+  const m = data.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) d = new Date(+m[3], +m[2] - 1, +m[1]);
+  // YYYY-MM-DD
+  const m2 = data.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) d = new Date(+m2[1], +m2[2] - 1, +m2[3]);
+  if (!d || isNaN(d.getTime())) return null;
+
+  const hm = hora.match(/^(\d{1,2}):(\d{2})$/);
+  if (!hm) return null;
+  d.setHours(+hm[1], +hm[2], 0, 0);
+  return d.toISOString();
+}
+
+export async function importAgendamentosExcel(
+  rows: ImportRow[]
+): Promise<ImportResult[]> {
+  const { data: allLeads }  = await supabase.from("pn_leads").select("id, phone, name, whatsapp_name");
+  const { data: allMedicos } = await supabase.from("pn_medicos").select("id, nome").eq("ativo", true);
+  const leads  = allLeads  || [];
+  const medicos = allMedicos || [];
+  const results: ImportResult[] = [];
+
+  for (const row of rows) {
+    // Resolve médico
+    const medicoKey = row.medico.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const medico = medicos.find(m =>
+      m.nome.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(medicoKey)
+    );
+    if (!medico) {
+      results.push({ ...row, status: "erro", msg: `Médico "${row.medico}" não encontrado`, leadId: null, medicoId: null });
+      continue;
+    }
+
+    // Resolve data/hora
+    const dataHora = parseDataHora(row.data, row.hora);
+    if (!dataHora) {
+      results.push({ ...row, status: "erro", msg: `Data/hora inválida: ${row.data} ${row.hora}`, leadId: null, medicoId: medico.id });
+      continue;
+    }
+
+    // Resolve lead
+    const phone = row.telefone ? normPhone(row.telefone) : null;
+    let lead = phone ? leads.find(l => l.phone === phone) : null;
+    if (!lead && row.nome) {
+      lead = leads.find(l =>
+        nameSim(l.name || l.whatsapp_name || "", row.nome) >= 0.45
+      ) || null;
+    }
+
+    let leadId = lead?.id || null;
+    let status: ImportResult["status"] = lead ? "vinculado" : "sem_lead";
+
+    if (!leadId && (row.nome || phone)) {
+      const { data: nl } = await supabase.from("pn_leads").insert({
+        phone:         phone || `sem_tel_${Date.now()}`,
+        name:          row.nome || null,
+        stage:         "agendado",
+        ai_mode:       false,
+        first_message: "Importado via Excel",
+        created_at:    new Date().toISOString(),
+        updated_at:    new Date().toISOString(),
+      }).select("id").single();
+      leadId = nl?.id || null;
+      status = "novo_lead";
+    }
+
+    // Insere agendamento
+    const { error: agErr } = await supabase.from("pn_agendamentos").insert({
+      lead_id:           leadId,
+      medico_id:         medico.id,
+      data_hora:         dataHora,
+      duracao_min:       60,
+      status:            "confirmado",
+      tipo_consulta:     row.tipo     || null,
+      nome_paciente:     row.nome     || null,
+      telefone_paciente: phone        || null,
+      observacoes:       row.obs      || null,
+      importado_em:      new Date().toISOString(),
+      created_at:        new Date().toISOString(),
+    });
+    if (agErr) {
+      results.push({ ...row, status: "erro", msg: agErr.message, leadId, medicoId: medico.id });
+      continue;
+    }
+
+    // Insere financeiro se tiver valor
+    if (row.valor && row.valor > 0) {
+      await supabase.from("pn_financeiro").insert({
+        lead_id:        leadId,
+        medico_id:      medico.id,
+        nome_paciente:  row.nome     || null,
+        medico_nome:    medico.nome,
+        valor:          row.valor,
+        forma_pagamento: row.pagamento || null,
+        parcelas:       row.parcelas || 1,
+        data_pagamento: dataHora,
+        registrado_por: "excel_import",
+        created_at:     new Date().toISOString(),
+      });
+    }
+
+    const msg = lead
+      ? `Vinculado a ${lead.name || lead.whatsapp_name || lead.phone}`
+      : leadId
+      ? "Novo lead criado"
+      : "Agendamento sem lead";
+    results.push({ ...row, status, msg, leadId, medicoId: medico.id });
+  }
+
+  return results;
+}
+
+// ── Vincula financeiro → leads (re-executa match) ─────────────────────────────
+export async function vincularFinanceiroLeads(): Promise<number> {
+  const { data: fins }  = await supabase.from("pn_financeiro").select("id, nome_paciente").is("lead_id", null);
+  const { data: leads } = await supabase.from("pn_leads").select("id, name, whatsapp_name");
+  if (!fins?.length || !leads?.length) return 0;
+  let linked = 0;
+  for (const f of fins) {
+    if (!f.nome_paciente) continue;
+    const match = leads.find(l => nameSim(l.name || l.whatsapp_name || "", f.nome_paciente) >= 0.45);
+    if (!match) continue;
+    await supabase.from("pn_financeiro").update({ lead_id: match.id }).eq("id", f.id);
+    linked++;
+  }
+  return linked;
 }
 
 export function exportLeadsCSV(leads: any[]) {

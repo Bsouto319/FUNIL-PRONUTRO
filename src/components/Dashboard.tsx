@@ -1,13 +1,15 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, FileText, LogOut, Settings, Bot } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
 import AdminPanel from "./AdminPanel";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut } from "../lib/api";
+import FinanceiroPage from "./FinanceiroPage";
+import RelatorioPage from "./RelatorioPage";
+import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
-type Page = "kanban" | "agenda" | "admin";
+type Page = "kanban" | "agenda" | "financeiro" | "relatorio" | "admin";
 
 export default function Dashboard({ user }: { user: any }) {
   const [leads, setLeads]         = useState<any[]>([]);
@@ -19,6 +21,11 @@ export default function Dashboard({ user }: { user: any }) {
   const [mariaActive, setMariaActive] = useState(false);
   const [mariaLoading, setMariaLoading] = useState(false);
   const [page, setPage]           = useState<Page>("kanban");
+  const [showNewLead, setShowNewLead] = useState(false);
+  const [newLeadForm, setNewLeadForm] = useState({ name: "", phone: "", stage: "novo_lead", ai_mode: false, first_message: "" });
+  const [savingLead, setSavingLead]   = useState(false);
+  const [newLeadMsg, setNewLeadMsg]   = useState("");
+  const [briefing, setBriefing]       = useState<any>(null);
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -35,6 +42,7 @@ export default function Dashboard({ user }: { user: any }) {
   useEffect(() => {
     load();
     fetchMariaGlobalMode().then(setMariaActive);
+    fetchLatestInsight().then(setBriefing);
   }, []);
 
   useEffect(() => {
@@ -42,7 +50,9 @@ export default function Dashboard({ user }: { user: any }) {
       .channel("pn_leads_rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "pn_leads" }, () => load())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    // Fallback: polling a cada 15s caso o realtime caia silenciosamente
+    const interval = setInterval(() => load(), 15000);
+    return () => { supabase.removeChannel(channel); clearInterval(interval); };
   }, [load]);
 
   async function handleToggleMaria() {
@@ -65,14 +75,34 @@ export default function Dashboard({ user }: { user: any }) {
     fetchLeads(v).then(setLeads);
   }
 
+  async function handleCreateLead(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingLead(true);
+    setNewLeadMsg("");
+    const ok = await createLead(newLeadForm);
+    setSavingLead(false);
+    if (ok) {
+      setNewLeadMsg("✅ Paciente criado!");
+      setNewLeadForm({ name: "", phone: "", stage: "novo_lead", ai_mode: false, first_message: "" });
+      load();
+      setTimeout(() => { setShowNewLead(false); setNewLeadMsg(""); }, 1200);
+    } else {
+      setNewLeadMsg("❌ Erro — verifique se o telefone já existe.");
+    }
+  }
+
   const statCards = [
-    { label: "Leads Hoje",  value: stats.hoje,      icon: Users,    bg: "bg-sky-500",     shadow: "shadow-sky-500/30"     },
-    { label: "Maria IA",    value: stats.maria,     icon: Bot,      bg: "bg-violet-500",  shadow: "shadow-violet-500/30"  },
-    { label: "Agendados",   value: stats.agendados, icon: Calendar, bg: "bg-emerald-500", shadow: "shadow-emerald-500/30" },
-    { label: "Total",       value: stats.total,     icon: BarChart3, bg: "bg-amber-500",  shadow: "shadow-amber-500/30"   },
+    { label: "Leads Hoje",  value: stats.hoje,      icon: Users,    gradient: "from-sky-500 to-blue-600",       glow: "shadow-sky-500/30"     },
+    { label: "Maria IA",    value: stats.maria,     icon: Bot,      gradient: "from-violet-500 to-purple-600",  glow: "shadow-violet-500/30"  },
+    { label: "Agendados",   value: stats.agendados, icon: Calendar, gradient: "from-emerald-500 to-teal-600",   glow: "shadow-emerald-500/30" },
+    { label: "Total",       value: stats.total,     icon: BarChart3, gradient: "from-amber-500 to-orange-500", glow: "shadow-amber-500/30"   },
   ];
 
   const roleLabel: Record<string, string> = { gerente: "GERENTE", secretaria: "SECRETÁRIA", medico: "MÉDICO", admin: "ADMIN" };
+
+  const firstName = (user.nome || "").split(" ")[0];
+  const brHour    = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
+  const saudacao  = brHour < 12 ? "Bom dia" : brHour < 18 ? "Boa tarde" : "Boa noite";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: "linear-gradient(160deg, #0e1f4a 0%, #162d6b 40%, #0f2057 100%)" }}>
@@ -92,13 +122,13 @@ export default function Dashboard({ user }: { user: any }) {
             </div>
           </div>
 
-          {/* User badge */}
+          {/* User badge + saudação */}
           <div className="hidden sm:flex items-center gap-2 ml-2 px-3 py-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10">
             <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center">
               <span className="text-white font-black text-[10px]">{(user.nome || "U")[0].toUpperCase()}</span>
             </div>
             <div className="leading-tight">
-              <p className="text-emerald-300 font-black text-xs leading-none">{user.nome}</p>
+              <p className="text-emerald-300 font-black text-xs leading-none">{saudacao}, {firstName}! 👋</p>
               <p className="text-emerald-500/60 text-[9px] font-bold">{roleLabel[user.role] || user.role?.toUpperCase()}</p>
             </div>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -106,13 +136,13 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-1 ml-2">
-            {(["kanban", "agenda", "admin"] as Page[]).map(p => (
+            {(["kanban", "agenda", "financeiro", "relatorio", "admin"] as Page[]).map(p => (
               <button
                 key={p}
                 onClick={() => setPage(p)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
               >
-                {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : "Admin"}
+                {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : "Admin"}
               </button>
             ))}
           </div>
@@ -132,6 +162,18 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Actions */}
           <div className="ml-auto flex items-center gap-2">
+            {/* Novo Paciente */}
+            {page === "kanban" && (
+              <button
+                onClick={() => setShowNewLead(true)}
+                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-emerald-600/20 hover:bg-emerald-600/40 border-emerald-500/30 text-emerald-300 transition"
+                title="Criar paciente manualmente"
+              >
+                <UserPlus size={13} />
+                <span className="hidden sm:inline">Novo Paciente</span>
+              </button>
+            )}
+
             {/* Maria toggle */}
             <button
               onClick={handleToggleMaria}
@@ -169,17 +211,66 @@ export default function Dashboard({ user }: { user: any }) {
       {/* Stats */}
       {page === "kanban" && (
         <div className="flex-shrink-0 px-4 sm:px-6 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {statCards.map(({ label, value, icon: Icon, bg, shadow }) => (
+          {statCards.map(({ label, value, icon: Icon, gradient, glow }) => (
             <div key={label} className="border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:bg-white/[0.06] transition" style={{ background: "rgba(255,255,255,0.05)" }}>
-              <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shadow-lg ${shadow} flex-shrink-0`}>
-                <Icon size={18} className="text-white" />
+              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg ${glow} flex-shrink-0`}>
+                <Icon size={20} className="text-white" />
               </div>
               <div>
-                <p className="text-3xl font-black text-white leading-none">{loading ? "–" : value}</p>
+                <p className="text-4xl font-black text-white leading-none">{loading ? "–" : value}</p>
                 <p className="text-blue-200/60 text-[10px] font-black tracking-widest uppercase mt-0.5">{label}</p>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Briefing card — visível apenas no kanban quando existe análise */}
+      {page === "kanban" && briefing && (
+        <div className="flex-shrink-0 px-4 sm:px-6 pb-1">
+          <div className="rounded-xl border border-violet-500/20 px-4 py-2.5 flex items-center gap-3 flex-wrap" style={{ background: "rgba(109,40,217,0.07)" }}>
+            {/* Score */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Brain size={13} className="text-violet-400" />
+              <span className="text-violet-300 text-xs font-black">Score</span>
+              <span className={`text-sm font-black ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>
+                {briefing.score_saude}pts
+              </span>
+            </div>
+            <div className="w-px h-4 bg-white/10 shrink-0" />
+            {/* Briefing text */}
+            <p className="text-white/60 text-xs leading-relaxed flex-1 min-w-0 truncate">{briefing.briefing}</p>
+            {/* Oportunidade perdida */}
+            {briefing.metricas?.totalOportunidadePerdida > 0 && (
+              <>
+                <div className="w-px h-4 bg-white/10 shrink-0" />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <TrendingDown size={12} className="text-rose-400" />
+                  <span className="text-rose-300 text-xs font-black">
+                    -{briefing.metricas.totalOportunidadePerdida.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="text-white/30 text-[10px]">perdidos</span>
+                </div>
+              </>
+            )}
+            {/* Top bullet */}
+            {briefing.bullets?.[0] && (
+              <>
+                <div className="w-px h-4 bg-white/10 shrink-0 hidden sm:block" />
+                <div className="hidden sm:flex items-center gap-1.5 shrink-0 max-w-xs">
+                  <Zap size={11} className="text-amber-400 shrink-0" />
+                  <span className="text-white/40 text-[10px] truncate">{briefing.bullets[0]}</span>
+                </div>
+              </>
+            )}
+            {/* Link para relatório */}
+            <button
+              onClick={() => setPage("relatorio")}
+              className="shrink-0 text-[10px] font-black text-violet-400 hover:text-violet-300 transition underline underline-offset-2"
+            >
+              Ver relatório completo →
+            </button>
+          </div>
         </div>
       )}
 
@@ -195,8 +286,63 @@ export default function Dashboard({ user }: { user: any }) {
           )
         )}
         {page === "agenda" && <AgendaPage />}
+        {page === "financeiro" && <FinanceiroPage />}
+        {page === "relatorio" && <RelatorioPage />}
         {page === "admin" && <AdminPanel user={user} />}
       </main>
+
+      {/* Modal: novo paciente */}
+      {showNewLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 shadow-2xl" style={{ background: "rgba(10,20,55,0.97)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <p className="text-white font-black text-base">Novo Paciente</p>
+              <button onClick={() => { setShowNewLead(false); setNewLeadMsg(""); }} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                <X size={16} className="text-white/50" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateLead} className="p-5 space-y-3">
+              <div>
+                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome completo</label>
+                <input required value={newLeadForm.name} onChange={e => setNewLeadForm(p => ({ ...p, name: e.target.value }))}
+                  placeholder="Maria Silva"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+              </div>
+              <div>
+                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Telefone (WhatsApp)</label>
+                <input required value={newLeadForm.phone} onChange={e => setNewLeadForm(p => ({ ...p, phone: e.target.value }))}
+                  placeholder="5561999998888"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                <p className="text-white/25 text-[10px] mt-0.5">Formato: 55 + DDD + número (ex: 5561999998888)</p>
+              </div>
+              <div>
+                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Stage inicial</label>
+                <select value={newLeadForm.stage} onChange={e => setNewLeadForm(p => ({ ...p, stage: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                  {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Observação inicial (opcional)</label>
+                <textarea value={newLeadForm.first_message} onChange={e => setNewLeadForm(p => ({ ...p, first_message: e.target.value }))}
+                  placeholder="Ex: Indicado pela Dra. Vanessa, quer consulta de retorno"
+                  rows={2}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="ai_mode_new" checked={newLeadForm.ai_mode} onChange={e => setNewLeadForm(p => ({ ...p, ai_mode: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-violet-500" />
+                <label htmlFor="ai_mode_new" className="text-white/60 text-xs">Ativar Maria IA para este paciente</label>
+              </div>
+              {newLeadMsg && <p className={`text-xs font-bold ${newLeadMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{newLeadMsg}</p>}
+              <button type="submit" disabled={savingLead}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                {savingLead ? "Criando..." : "Criar Paciente"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <LeadModal
