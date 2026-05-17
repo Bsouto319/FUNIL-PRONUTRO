@@ -17,6 +17,12 @@ function brTime(): string {
   return new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
+/** Horário de Brasília (UTC-3). Retorna true entre 7h e 22h. */
+function isBusinessHours(): boolean {
+  const h = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
+  return h >= 7 && h < 22;
+}
+
 async function sendAlert(text: string): Promise<void> {
   await fetch(`${UAZAPI_URL}/send/text`, {
     method: "POST",
@@ -25,7 +31,7 @@ async function sendAlert(text: string): Promise<void> {
   }).catch(e => console.error("sendAlert failed:", e));
 }
 
-async function wasAlertedRecently(type: string, cooldownMin = 30): Promise<boolean> {
+async function wasAlertedRecently(type: string, cooldownMin = 60): Promise<boolean> {
   const { data } = await db.from("pn_config")
     .select("value").eq("key", `monitor_last_${type}`).maybeSingle();
   if (!data?.value) return false;
@@ -46,7 +52,7 @@ interface CheckResult {
   autoFixed?: boolean;
 }
 
-/** Poll deve ter sido executado há menos de 5 minutos */
+/** Poll deve ter sido executado há menos de 7 minutos */
 async function checkPoll(): Promise<CheckResult> {
   const { data } = await db.from("pn_poll_state")
     .select("last_poll_at").eq("id", 1).single();
@@ -57,8 +63,7 @@ async function checkPoll(): Promise<CheckResult> {
 
   const ageMin = (Date.now() - new Date(data.last_poll_at).getTime()) / 60_000;
 
-  if (ageMin > 5) {
-    // Tenta auto-restart chamando o endpoint do poll
+  if (ageMin > 7) {
     let fixed = false;
     try {
       const r = await fetch(POLL_URL, {
@@ -79,16 +84,20 @@ async function checkPoll(): Promise<CheckResult> {
   return { type: "poll", ok: true };
 }
 
-/** Verifica leads com Maria ativa mas sem resposta há mais de 15 min */
+/** Verifica leads com Maria ativa mas sem resposta entre 30 min e 2h atrás */
 async function checkMariaStuck(): Promise<CheckResult> {
-  const cutoff15 = new Date(Date.now() - 15 * 60_000).toISOString();
+  if (!isBusinessHours()) return { type: "maria_stuck", ok: true };
+
+  const cutoffMin = new Date(Date.now() - 30 * 60_000).toISOString();
+  const cutoffMax = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
 
   const { data: leads } = await db
     .from("pn_leads")
-    .select("id, name, phone")
+    .select("id, name, phone, last_message_at")
     .eq("ai_mode", true)
     .not("stage", "eq", "perdido")
-    .lte("last_message_at", cutoff15)
+    .lte("last_message_at", cutoffMin)
+    .gte("last_message_at", cutoffMax)
     .limit(20);
 
   if (!leads?.length) return { type: "maria_stuck", ok: true };
@@ -107,6 +116,10 @@ async function checkMariaStuck(): Promise<CheckResult> {
       .maybeSingle();
 
     if (!lastIn) continue;
+
+    // Ignora leads cuja última mensagem chegou fora do horário comercial
+    const lastInHour = new Date(new Date(lastIn.created_at).getTime() - 3 * 60 * 60 * 1000).getUTCHours();
+    if (lastInHour < 7 || lastInHour >= 22) continue;
 
     const { count } = await db
       .from("pn_mensagens")
@@ -128,13 +141,17 @@ async function checkMariaStuck(): Promise<CheckResult> {
   return {
     type: "maria_stuck",
     ok: false,
-    message: `Maria sem responder ${stuckCount} lead(s) há +15min: ${stuckNames.join(", ")}${extra}`,
+    message: `Maria sem responder ${stuckCount} lead(s) há +30min: ${stuckNames.join(", ")}${extra}`,
   };
 }
 
-/** Verifica se houve erro nos últimos agendamentos (status inesperado) */
+/** Verifica se houve agendamentos na última hora (apenas horário comercial 9h-18h) */
 async function checkAgendamentos(): Promise<CheckResult> {
-  const since = new Date(Date.now() - 60 * 60_000).toISOString(); // última hora
+  const hour = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
+  const isBusinessHour = hour >= 9 && hour < 18;
+  if (!isBusinessHour) return { type: "agendamentos", ok: true };
+
+  const since = new Date(Date.now() - 60 * 60_000).toISOString();
 
   const { count } = await db
     .from("pn_agendamentos")
@@ -142,11 +159,7 @@ async function checkAgendamentos(): Promise<CheckResult> {
     .eq("status", "confirmado")
     .gte("created_at", since);
 
-  // Apenas informa se não houve nenhum agendamento novo em 24h durante horário comercial
-  const hour = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
-  const isBusinessHour = hour >= 9 && hour < 18;
-
-  if (isBusinessHour && (count ?? 0) === 0) {
+  if ((count ?? 0) === 0) {
     const { count: totalLeads } = await db
       .from("pn_leads")
       .select("id", { count: "exact", head: true })
@@ -177,47 +190,37 @@ async function runMonitor() {
   const failed = results.filter(r => !r.ok);
   const fixed  = failed.filter(r => r.autoFixed);
 
-  const alerts: string[] = [];
-
+  // Coleta quais issues precisam de alerta (single-pass para evitar race com cooldown)
+  const toAlert: CheckResult[] = [];
   for (const r of failed) {
-    const alerted = await wasAlertedRecently(r.type, 30);
-    if (!alerted && r.message) {
-      alerts.push(`• ${r.message}`);
-      await markAlerted(r.type);
-    }
+    const alerted = await wasAlertedRecently(r.type, 60);
+    if (!alerted && r.message) toAlert.push(r);
   }
 
-  // Para cada issue novo, aciona o AI-Fix em vez de só alertar
   const fixRequests: Promise<void>[] = [];
-  for (const r of failed) {
-    const alerted = await wasAlertedRecently(r.type, 30);
-    if (!alerted && r.message) {
-      alerts.push(`• ${r.message}`);
-      await markAlerted(r.type);
-      // Dispara AI-Fix de forma assíncrona (não bloqueia o monitor)
-      fixRequests.push(
-        fetch(AI_FIX_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY}` },
-          body: JSON.stringify({ issue_type: r.type, issue_message: r.message }),
-        }).then(() => {}).catch(e => console.error("ai-fix dispatch error:", e))
-      );
-    }
+  for (const r of toAlert) {
+    await markAlerted(r.type);
+    fixRequests.push(
+      fetch(AI_FIX_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({ issue_type: r.type, issue_message: r.message }),
+      }).then(() => {}).catch(e => console.error("ai-fix dispatch error:", e))
+    );
   }
 
-  // Aguarda dispatches (fire-and-forget, mas aguarda para não timeout)
   await Promise.allSettled(fixRequests);
 
-  if (alerts.length > 0) {
-    console.log("Issues detectados, AI-Fix acionado:", alerts);
+  if (toAlert.length > 0) {
+    console.log("Issues detectados, AI-Fix acionado:", toAlert.map(r => r.message));
   } else {
-    console.log("Monitor OK — sem alertas");
+    console.log("Monitor v3 OK — sem alertas");
   }
 
   return {
     checked: results.map(r => r.type),
     issues: failed.length,
-    dispatched_to_ai_fix: alerts.length,
+    dispatched_to_ai_fix: toAlert.length,
     autoFixed: fixed.map(r => r.type),
   };
 }
@@ -232,7 +235,6 @@ Deno.serve(async (_req: Request) => {
     return new Response(JSON.stringify(result), { headers: cors });
   } catch (err) {
     console.error("monitor error", err);
-    // Se o próprio monitor falhou, manda alerta
     await sendAlert(`🔴 *ProNutro Monitor — FALHA CRÍTICA*\n${String(err)}\n\n_${brTime()}_`).catch(() => {});
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: cors });
   }

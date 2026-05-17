@@ -301,12 +301,87 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
   if ((recentOut ?? 0) > 0) { console.log(`Cooldown → ${lead.phone}`); return; }
 
   if (isNew) {
-    const saud = getSaudacao(lead.name);
-    await setPresence(lead.phone, "composing");
-    await sleep(typingDuration(saud.length));
-    await setPresence(lead.phone, "paused");
-    await safeSend(lead.id, lead.phone, saud, `saudacao_${lead.id}`);
-    console.log(`Maria SAUDAÇÃO → ${lead.phone}`);
+    const firstMsg    = (lead.first_message || "").trim();
+    const isGreeting  = firstMsg.length < 15 ||
+      /^(oi+|ol[aá]|bom dia|boa tarde|boa noite|e a[ií]|tudo bem|al[oô]u?)[\s!?.]*$/i.test(firstMsg);
+
+    if (isGreeting) {
+      const saud = getSaudacao(lead.name);
+      await setPresence(lead.phone, "composing");
+      await sleep(typingDuration(saud.length));
+      await setPresence(lead.phone, "paused");
+      await safeSend(lead.id, lead.phone, saud, `saudacao_${lead.id}`);
+      console.log(`Maria SAUDAÇÃO → ${lead.phone}`);
+      return;
+    }
+
+    // Primeira mensagem com conteúdo real — onboarding inteligente via GPT
+    const fromGoogle  = /google|anúncio|anuncio|propaganda|maps/i.test(firstMsg);
+    const brNow   = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const dateStr = brNow.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const onboardNote = `\n\n## PRIMEIRO CONTATO — ONBOARDING
+Novo paciente entrando em contato pela primeira vez.${fromGoogle ? "\n- ORIGEM: veio pelo Google. Agradeça gentilmente por ter encontrado a clínica." : ""}
+- Apresente-se brevemente como Maria da Clínica ProNutro
+- Reconheça e responda o que o paciente já informou (NÃO repita a pergunta que ele já respondeu)
+- Faça apenas a próxima pergunta de qualificação necessária`;
+
+    const sysContent = `${MARIA_SYSTEM}${onboardNote}\n\nHoje: ${dateStr}`;
+    const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: sysContent }, { role: "user", content: firstMsg }],
+      }),
+    });
+
+    if (!gptRes.ok) {
+      const saud = getSaudacao(lead.name);
+      await setPresence(lead.phone, "composing");
+      await sleep(typingDuration(saud.length));
+      await setPresence(lead.phone, "paused");
+      await safeSend(lead.id, lead.phone, saud, `saudacao_${lead.id}`);
+      return;
+    }
+
+    const aiData = await gptRes.json();
+    let parsed: any;
+    try { parsed = JSON.parse(aiData.choices[0].message.content); } catch {
+      const saud = getSaudacao(lead.name);
+      await safeSend(lead.id, lead.phone, saud, `saudacao_${lead.id}`);
+      return;
+    }
+
+    const { message, stage, action, medico_nome, data_hora, nome_paciente, notas_paciente, medico_preferido } = parsed;
+    if (!message) return;
+
+    await humanSend(lead.id, lead.phone, message, `saudacao_${lead.id}`, firstMsg.length);
+    console.log(`Maria ONBOARD → ${lead.phone} fromGoogle=${fromGoogle}`);
+
+    const onboardUpdates: any = { updated_at: new Date().toISOString() };
+    if (stage && VALID_STAGES.includes(stage)) onboardUpdates.stage = stage;
+    if (nome_paciente && !lead.name)            onboardUpdates.name = nome_paciente;
+    if (notas_paciente)                         onboardUpdates.notas = notas_paciente;
+    if (medico_preferido)                       onboardUpdates.medico_preferido = medico_preferido;
+    if (fromGoogle)                             onboardUpdates.notas = `[Google] ${notas_paciente || ""}`.trim();
+    await db.from("pn_leads").update(onboardUpdates).eq("id", lead.id);
+
+    if (action === "criar_agendamento" && medico_nome && data_hora) {
+      const last = medico_nome.split(" ").pop();
+      const { data: med } = await db.from("pn_medicos").select("id").ilike("nome", `%${last}%`).maybeSingle();
+      if (med) {
+        await db.from("pn_agendamentos").insert({
+          lead_id: lead.id, medico_id: med.id, data_hora,
+          duracao_min: 30, status: "confirmado",
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        });
+        await db.from("pn_leads").update({ stage: "agendado", medico_preferido: medico_nome, updated_at: new Date().toISOString() }).eq("id", lead.id);
+      }
+    }
+    if (action === "perdido") {
+      await db.from("pn_leads").update({ stage: "perdido", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
+    }
     return;
   }
 
@@ -438,7 +513,7 @@ async function runPoll() {
       (m.text || m.content?.text || m.body);
   });
 
-  console.log(`pronutro-poll v12: lastTs=${lastTs} total=${all.length} new=${newMsgs.length}`);
+  console.log(`pronutro-poll v13: lastTs=${lastTs} total=${all.length} new=${newMsgs.length}`);
 
   if (!newMsgs.length && !imageMsgs.length) {
     await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
