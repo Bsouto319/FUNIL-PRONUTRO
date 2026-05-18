@@ -37,6 +37,9 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
   const [filterHoje, setFilterHoje]       = useState(false);
+  const [showPriorityQueue, setShowPriorityQueue] = useState(false);
+  const [showFollowUp, setShowFollowUp]           = useState(false);
+  const [sendingFollowUp, setSendingFollowUp]     = useState<string | null>(null);
   const [organizeModal, setOrganizeModal] = useState<{
     open: boolean; total: number; current: number; done: boolean;
     results: { name: string; from: string; to: string; changed: boolean; motivo?: string }[];
@@ -244,6 +247,70 @@ export default function Dashboard({ user }: { user: any }) {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }
 
+  // ── Computed: fila de prioridades ─────────────────────────────────────────
+  const priorityQueue = leads
+    .filter(l => !["resolvido", "perdido", "agendado"].includes(l.stage))
+    .map(l => {
+      const lastMsg = l.last_message_at || l.created_at;
+      const mins = Math.floor((Date.now() - new Date(lastMsg).getTime()) / 60000);
+      const nomeLead = l.name || l.whatsapp_name || `+${l.phone}`;
+      const semRespostaHumana = !l.ai_mode;
+
+      let urgency: "alta" | "media" | "baixa";
+      let motivo: string;
+      let emoji: string;
+
+      if (semRespostaHumana && mins > 120) {
+        urgency = "alta"; emoji = "🔴";
+        motivo = `Paciente aguardando ${mins >= 60 ? `${Math.floor(mins/60)}h` : `${mins}min`} sem resposta humana`;
+      } else if (l.stage === "interesse_real" && mins > 60) {
+        urgency = "alta"; emoji = "🔥";
+        motivo = "Lead quente em Interesse Real — não perdê-lo de vista";
+      } else if (semRespostaHumana && mins > 30) {
+        urgency = "media"; emoji = "🟡";
+        motivo = `Aguardando resposta há ${mins}min`;
+      } else if (l.stage === "novo_lead" && mins > 30) {
+        urgency = "media"; emoji = "👋";
+        motivo = "Novo lead sem primeiro contato humano";
+      } else {
+        urgency = "baixa"; emoji = "🟢";
+        motivo = l.ai_mode ? "Maria IA está cuidando" : "Em atendimento normal";
+      }
+
+      return { ...l, urgency, motivo, emoji, nomeLead, minsSince: mins };
+    })
+    .sort((a, b) => {
+      const order = { alta: 0, media: 1, baixa: 2 };
+      return order[a.urgency] - order[b.urgency] || b.minsSince - a.minsSince;
+    });
+
+  // ── Computed: follow-ups necessários ─────────────────────────────────────
+  const FOLLOWUP_TEMPLATES = [
+    (nome: string) => `Oi ${nome}! 😊 Tudo bem? Ainda tem interesse em agendar sua consulta de nutrição?`,
+    (nome: string) => `Olá ${nome}! Passando para saber se ainda posso te ajudar com alguma informação sobre a consulta. 🌿`,
+    (nome: string) => `Oi ${nome}! A clínica ProNutro aqui. Você ainda está interessado(a) em agendar? Temos horários disponíveis esta semana! 📅`,
+  ];
+  const followUpLeads = leads
+    .filter(l => {
+      if (["resolvido", "perdido", "agendado"].includes(l.stage)) return false;
+      if (l.ai_mode) return false;
+      const mins = Math.floor((Date.now() - new Date(l.last_message_at || l.created_at).getTime()) / 60000);
+      return mins > 60 * 24;
+    })
+    .map((l, i) => ({
+      ...l,
+      nomeLead: l.name || l.whatsapp_name || `+${l.phone}`,
+      template: FOLLOWUP_TEMPLATES[i % FOLLOWUP_TEMPLATES.length](l.name || l.whatsapp_name || ""),
+      diasSem: Math.floor((Date.now() - new Date(l.last_message_at || l.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+    }));
+
+  async function handleSendFollowUp(lead: any, text: string) {
+    setSendingFollowUp(lead.id);
+    await (await import("../lib/api")).sendMessage(lead.id, lead.phone, text, currentUser.nome);
+    setSendingFollowUp(null);
+    load();
+  }
+
   async function handleCreateLead(e: React.FormEvent) {
     e.preventDefault();
     setSavingLead(true);
@@ -395,6 +462,36 @@ export default function Dashboard({ user }: { user: any }) {
                 </span>
               </button>
             )}
+            {/* Fila de Prioridades */}
+            {page === "kanban" && (
+              <button
+                onClick={() => setShowPriorityQueue(true)}
+                title="Fila de prioridades — quem atender primeiro"
+                className="relative flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-amber-500/15 hover:bg-amber-500/30 border-amber-500/30 text-amber-300 transition"
+              >
+                <span className="text-sm leading-none">📋</span>
+                <span className="hidden sm:inline">Prioridades</span>
+                {priorityQueue.filter(l => l.urgency === "alta").length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-lg animate-pulse">
+                    {priorityQueue.filter(l => l.urgency === "alta").length}
+                  </span>
+                )}
+              </button>
+            )}
+            {/* Follow-ups */}
+            {page === "kanban" && followUpLeads.length > 0 && (
+              <button
+                onClick={() => setShowFollowUp(true)}
+                title="Leads precisando de follow-up — mais de 24h sem contato"
+                className="relative flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-rose-500/15 hover:bg-rose-500/30 border-rose-500/30 text-rose-300 transition"
+              >
+                <span className="text-sm leading-none">🔔</span>
+                <span className="hidden sm:inline">Follow-up</span>
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-lg">
+                  {followUpLeads.length}
+                </span>
+              </button>
+            )}
             {/* Novo Paciente */}
             {page === "kanban" && (
               <button
@@ -516,51 +613,79 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       )}
 
-      {/* Briefing card — visível apenas no kanban quando existe análise */}
-      {page === "kanban" && briefing && (
+      {/* Briefing Matinal — sempre visível no kanban */}
+      {page === "kanban" && !loading && (
         <div className="flex-shrink-0 px-4 sm:px-6 pb-1">
-          <div className="rounded-xl border border-violet-500/20 px-4 py-2.5 flex items-center gap-3 flex-wrap" style={{ background: "rgba(109,40,217,0.07)" }}>
-            {/* Score */}
-            <div className="flex items-center gap-2 shrink-0">
-              <Brain size={13} className="text-violet-400" />
-              <span className="text-violet-300 text-xs font-black">Score</span>
-              <span className={`text-sm font-black ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>
-                {briefing.score_saude}pts
-              </span>
-            </div>
-            <div className="w-px h-4 bg-white/10 shrink-0" />
-            {/* Briefing text */}
-            <p className="text-white/60 text-xs leading-relaxed flex-1 min-w-0 truncate">{briefing.briefing}</p>
-            {/* Oportunidade perdida */}
-            {briefing.metricas?.totalOportunidadePerdida > 0 && (
-              <>
-                <div className="w-px h-4 bg-white/10 shrink-0" />
+          <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+            {/* Linha superior: resumo rápido */}
+            <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap border-b border-white/8">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Brain size={12} className="text-violet-400" />
+                <span className="text-violet-300 text-[10px] font-black uppercase tracking-wider">Briefing IA</span>
+              </div>
+              <div className="w-px h-3 bg-white/15 shrink-0" />
+              {/* Urgentes */}
+              {priorityQueue.filter(l => l.urgency === "alta").length > 0 ? (
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <TrendingDown size={12} className="text-rose-400" />
-                  <span className="text-rose-300 text-xs font-black">
-                    -{briefing.metricas.totalOportunidadePerdida.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                  <span className="text-[10px] font-black text-red-300">
+                    🔴 {priorityQueue.filter(l => l.urgency === "alta").length} urgente{priorityQueue.filter(l => l.urgency === "alta").length !== 1 ? "s" : ""}
                   </span>
-                  <span className="text-white/30 text-[10px]">perdidos</span>
+                  <span className="text-white/25 text-[10px]">
+                    — {priorityQueue.filter(l => l.urgency === "alta").slice(0, 2).map(l => l.nomeLead.split(" ")[0]).join(", ")}
+                  </span>
                 </div>
-              </>
+              ) : (
+                <span className="text-emerald-300 text-[10px] font-black">✅ Sem urgências</span>
+              )}
+              <div className="w-px h-3 bg-white/15 shrink-0" />
+              {/* Follow-ups */}
+              {followUpLeads.length > 0 ? (
+                <button onClick={() => setShowFollowUp(true)} className="flex items-center gap-1 text-[10px] font-black text-rose-300 hover:text-rose-200 transition shrink-0">
+                  🔔 {followUpLeads.length} follow-up{followUpLeads.length !== 1 ? "s" : ""} pendente{followUpLeads.length !== 1 ? "s" : ""}
+                </button>
+              ) : (
+                <span className="text-white/30 text-[10px]">✓ Follow-ups em dia</span>
+              )}
+              {/* Leads quentes */}
+              {priorityQueue.filter(l => l.stage === "interesse_real").length > 0 && (
+                <>
+                  <div className="w-px h-3 bg-white/15 shrink-0" />
+                  <span className="text-amber-300 text-[10px] font-black shrink-0">
+                    🔥 {priorityQueue.filter(l => l.stage === "interesse_real").length} lead{priorityQueue.filter(l => l.stage === "interesse_real").length !== 1 ? "s" : ""} quente{priorityQueue.filter(l => l.stage === "interesse_real").length !== 1 ? "s" : ""}
+                  </span>
+                </>
+              )}
+              <button onClick={() => setShowPriorityQueue(true)}
+                className="ml-auto shrink-0 text-[10px] font-black text-amber-400 hover:text-amber-300 transition underline underline-offset-2">
+                Ver fila →
+              </button>
+            </div>
+            {/* Linha inferior: briefing GPT se existir */}
+            {briefing && (
+              <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
+                {briefing.score_saude != null && (
+                  <>
+                    <span className={`text-[10px] font-black ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>
+                      {briefing.score_saude}pts
+                    </span>
+                    <div className="w-px h-3 bg-white/15 shrink-0" />
+                  </>
+                )}
+                <p className="text-white/45 text-[10px] leading-relaxed flex-1 min-w-0 truncate">{briefing.briefing}</p>
+                {briefing.metricas?.totalOportunidadePerdida > 0 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <TrendingDown size={10} className="text-rose-400" />
+                    <span className="text-rose-300 text-[10px] font-black">
+                      -{briefing.metricas.totalOportunidadePerdida.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                )}
+                <button onClick={() => setPage("relatorio")}
+                  className="shrink-0 text-[10px] font-black text-violet-400 hover:text-violet-300 transition underline underline-offset-2">
+                  Relatório →
+                </button>
+              </div>
             )}
-            {/* Top bullet */}
-            {briefing.bullets?.[0] && (
-              <>
-                <div className="w-px h-4 bg-white/10 shrink-0 hidden sm:block" />
-                <div className="hidden sm:flex items-center gap-1.5 shrink-0 max-w-xs">
-                  <Zap size={11} className="text-amber-400 shrink-0" />
-                  <span className="text-white/40 text-[10px] truncate">{briefing.bullets[0]}</span>
-                </div>
-              </>
-            )}
-            {/* Link para relatório */}
-            <button
-              onClick={() => setPage("relatorio")}
-              className="shrink-0 text-[10px] font-black text-violet-400 hover:text-violet-300 transition underline underline-offset-2"
-            >
-              Ver relatório completo →
-            </button>
           </div>
         </div>
       )}
@@ -582,6 +707,113 @@ export default function Dashboard({ user }: { user: any }) {
         {page === "prontuario" && <ProntuarioPage />}
         {page === "admin" && <AdminPanel user={user} />}
       </main>
+
+      {/* Modal: Fila de Prioridades */}
+      {showPriorityQueue && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
+          <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-white/10 shadow-2xl overflow-hidden" style={{ background: "rgba(10,20,55,0.98)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <div>
+                <p className="text-white font-black text-sm">📋 Fila de Prioridades</p>
+                <p className="text-white/35 text-[10px] mt-0.5">Quem atender primeiro hoje</p>
+              </div>
+              <button onClick={() => setShowPriorityQueue(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                <X size={16} className="text-white/50" />
+              </button>
+            </div>
+
+            {/* Resumo */}
+            <div className="flex gap-2 px-5 py-3 border-b border-white/8 flex-shrink-0">
+              {[
+                { label: "Urgente", count: priorityQueue.filter(l => l.urgency === "alta").length, color: "bg-red-500/20 text-red-300 border-red-500/30" },
+                { label: "Atenção", count: priorityQueue.filter(l => l.urgency === "media").length, color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+                { label: "Em dia",  count: priorityQueue.filter(l => l.urgency === "baixa").length, color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+              ].map(({ label, count, color }) => (
+                <div key={label} className={`flex-1 text-center px-2 py-1.5 rounded-xl border text-[10px] font-black ${color}`}>
+                  <p className="text-lg leading-tight">{count}</p>
+                  <p>{label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-white/5">
+              {priorityQueue.length === 0 && (
+                <p className="text-white/25 text-xs text-center py-10">Todos os leads estão em dia! ✓</p>
+              )}
+              {priorityQueue.map(l => (
+                <button key={l.id} onClick={() => { setSelected(l); setShowPriorityQueue(false); }}
+                  className="w-full px-5 py-3.5 text-left hover:bg-white/5 transition flex items-start gap-3">
+                  <span className="text-lg leading-none shrink-0 mt-0.5">{l.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-black text-sm truncate">{l.nomeLead}</p>
+                    <p className={`text-[11px] leading-relaxed mt-0.5 ${
+                      l.urgency === "alta" ? "text-red-300" : l.urgency === "media" ? "text-amber-300" : "text-white/40"
+                    }`}>{l.motivo}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${
+                      l.urgency === "alta" ? "bg-red-500/20 text-red-300 border-red-500/30" :
+                      l.urgency === "media" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" :
+                      "bg-white/10 text-white/40 border-white/15"
+                    }`}>
+                      {STAGES.find(s => s.key === l.stage)?.label || l.stage}
+                    </span>
+                    <p className="text-white/25 text-[10px] mt-1">Abrir →</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Follow-up Rápido */}
+      {showFollowUp && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
+          <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-white/10 shadow-2xl overflow-hidden" style={{ background: "rgba(10,20,55,0.98)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
+              <div>
+                <p className="text-white font-black text-sm">🔔 Follow-up Rápido</p>
+                <p className="text-white/35 text-[10px] mt-0.5">{followUpLeads.length} lead{followUpLeads.length !== 1 ? "s" : ""} sem contato há mais de 24h</p>
+              </div>
+              <button onClick={() => setShowFollowUp(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                <X size={16} className="text-white/50" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-white/5">
+              {followUpLeads.map(l => (
+                <div key={l.id} className="px-5 py-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500/60 to-orange-500/60 flex items-center justify-center text-white font-black text-[10px] shrink-0">
+                      {l.nomeLead[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-black text-xs truncate">{l.nomeLead}</p>
+                      <p className="text-rose-300/70 text-[10px]">Silêncio há {l.diasSem} dia{l.diasSem !== 1 ? "s" : ""}</p>
+                    </div>
+                    <button onClick={() => { setSelected(l); setShowFollowUp(false); }}
+                      className="text-[10px] text-white/30 hover:text-white/60 transition shrink-0">
+                      Ver chat →
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-white/10 px-3 py-2.5" style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <p className="text-white/60 text-[10px] mb-1.5">Mensagem sugerida:</p>
+                    <p className="text-white/80 text-xs leading-relaxed">{l.template}</p>
+                  </div>
+                  <button
+                    onClick={() => handleSendFollowUp(l, l.template)}
+                    disabled={sendingFollowUp === l.id}
+                    className="w-full py-2 rounded-xl bg-emerald-600/80 hover:bg-emerald-600 text-white font-black text-xs transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <span>{sendingFollowUp === l.id ? "Enviando..." : "📤 Enviar follow-up"}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: novo paciente */}
       {showNewLead && (

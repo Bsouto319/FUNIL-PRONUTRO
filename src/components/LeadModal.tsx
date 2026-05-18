@@ -86,6 +86,18 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     setMessages(msgs);
   }, [lead.id]);
 
+  // Auto-trigger análise ao abrir o chat (apenas se última mensagem for do paciente)
+  useEffect(() => {
+    const lastMsg = lead.last_message_at;
+    if (!lastMsg) return;
+    const mins = Math.floor((Date.now() - new Date(lastMsg).getTime()) / (1000 * 60));
+    if (mins < 1440 && !lead.ai_mode) {
+      const t = setTimeout(() => handleAnalyze(), 900);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     refreshMessages();
     fetchMedicos().then(setMedicos);
@@ -390,13 +402,19 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                     </div>
 
                     {/* Ações */}
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <button
+                        onClick={() => { setText(aiAnalysis.resposta_sugerida); setAiAnalysis(null); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/80 hover:bg-violet-600 text-white text-[11px] font-black transition"
+                      >
+                        ⬇️ Usar no chat
+                      </button>
                       <button
                         onClick={handleCopyResponse}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-[11px] font-black transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 text-[11px] font-black transition"
                       >
                         {copied ? <CheckCheck size={11} /> : <Copy size={11} />}
-                        {copied ? "Copiado!" : "Copiar resposta"}
+                        {copied ? "Copiado!" : "Copiar"}
                       </button>
                       {aiAnalysis.stage_sugerido && aiAnalysis.stage_sugerido !== stage && (
                         <button
