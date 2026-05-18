@@ -28,9 +28,11 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadMsg, setNewLeadMsg]   = useState("");
   const [briefing, setBriefing]       = useState<any>(null);
 
-  const [newLeadAlert, setNewLeadAlert] = useState(false);
-  const [newMsgAlert,  setNewMsgAlert]  = useState(false);
-  const [filterHoje, setFilterHoje]     = useState(false);
+  const [newLeadAlert, setNewLeadAlert]   = useState(false);
+  const [newMsgAlert,  setNewMsgAlert]    = useState(false);
+  const [filterHoje, setFilterHoje]       = useState(false);
+  const [organizing, setOrganizing]       = useState(false);
+  const [organizeMsg, setOrganizeMsg]     = useState("");
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -142,6 +144,32 @@ export default function Dashboard({ user }: { user: any }) {
     const v = e.target.value;
     setSearch(v);
     fetchLeads(v).then(setLeads);
+  }
+
+  async function handleOrganize() {
+    setOrganizing(true);
+    setOrganizeMsg("");
+    // Processa leads que não são "agendado" — em lotes de 5 para não sobrecarregar
+    const toProcess = leads.filter(l => l.stage !== "agendado");
+    let changed = 0;
+    for (let i = 0; i < toProcess.length; i += 5) {
+      const batch = toProcess.slice(i, i + 5);
+      await Promise.all(batch.map(async (l) => {
+        try {
+          const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-auto-stage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MTM2NjMsImV4cCI6MjA1Nzk4OTY2M30.TLBbLCx08gkD_RWnMpZ4dBKxnb4wZgm6vTbAFaGRZ3A" },
+            body: JSON.stringify({ lead_id: l.id }),
+          });
+          const data = await res.json();
+          if (data.changed) changed++;
+        } catch {}
+      }));
+    }
+    await load();
+    setOrganizeMsg(`✅ ${changed} lead${changed !== 1 ? "s" : ""} reorganizado${changed !== 1 ? "s" : ""}`);
+    setOrganizing(false);
+    setTimeout(() => setOrganizeMsg(""), 4000);
   }
 
   async function handleCreateLead(e: React.FormEvent) {
@@ -271,6 +299,27 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Actions */}
           <div className="ml-auto flex items-center gap-2">
+            {/* Organizar Kanban com IA */}
+            {page === "kanban" && (
+              <div className="flex items-center gap-2">
+                {organizeMsg && (
+                  <span className="text-xs font-bold text-emerald-300 whitespace-nowrap">{organizeMsg}</span>
+                )}
+                <button
+                  onClick={handleOrganize}
+                  disabled={organizing}
+                  title="Analisa todas as conversas e move cada lead para o stage correto automaticamente"
+                  className={`flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border transition ${
+                    organizing
+                      ? "bg-amber-500/20 border-amber-500/40 text-amber-300 cursor-wait"
+                      : "bg-violet-600/20 hover:bg-violet-600/40 border-violet-500/30 text-violet-300"
+                  }`}
+                >
+                  <Brain size={13} className={organizing ? "animate-pulse" : ""} />
+                  <span className="hidden sm:inline">{organizing ? "Organizando..." : "🎯 Organizar IA"}</span>
+                </button>
+              </div>
+            )}
             {/* Novo Paciente */}
             {page === "kanban" && (
               <button

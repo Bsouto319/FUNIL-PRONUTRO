@@ -161,7 +161,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   useEffect(() => { loadSlots(); }, [medicoId, data]);
 
   async function handleAgendar() {
-    const horario = slot || horaManual;
+    const horario = horaManual;
     if (!medicoId || !data || !horario) return;
     setAgendando(true);
     setAgendadoErr("");
@@ -455,27 +455,37 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
               </div>
             )}
 
-            {/* Slots do Google Calendar */}
-            {slots.length > 0 ? (
+            {/* Slots do Google Calendar — atalhos rápidos */}
+            {slots.length > 0 && (
               <div>
-                <label className="block text-white/60 text-xs font-bold mb-2">Horário disponível (Google Calendar)</label>
+                <label className="block text-white/60 text-xs font-bold mb-2">
+                  Horários disponíveis
+                  <span className="text-white/30 font-normal ml-1.5">· clique para preencher</span>
+                </label>
                 <div className="grid grid-cols-5 gap-2">
                   {slots.map(s => (
-                    <button key={s} onClick={() => { setSlot(s); setHoraManual(""); }}
-                      className={`py-2 rounded-lg text-xs font-bold border transition ${slot === s ? "bg-emerald-600 text-white border-emerald-500" : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"}`}>
+                    <button key={s} onClick={() => setHoraManual(s)}
+                      className={`py-2 rounded-lg text-xs font-bold border transition ${horaManual === s ? "bg-emerald-600 text-white border-emerald-500" : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"}`}>
                       {s}
                     </button>
                   ))}
                 </div>
               </div>
-            ) : (medicoId && data) ? (
-              <div>
-                <label className="block text-white/60 text-xs font-bold mb-1.5">Horário manual *</label>
-                <p className="text-white/25 text-[10px] mb-2">Nenhum slot carregado do Google Calendar — informe o horário manualmente.</p>
-                <input type="time" value={horaManual} onChange={e => { setHoraManual(e.target.value); setSlot(""); }}
-                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
-              </div>
-            ) : null}
+            )}
+
+            {/* Campo de horário — SEMPRE visível */}
+            <div>
+              <label className="block text-white/60 text-xs font-bold mb-1.5">
+                Horário escolhido *
+              </label>
+              <input
+                type="time"
+                value={horaManual}
+                onChange={e => setHoraManual(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-base font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              />
+              {!horaManual && <p className="text-white/25 text-[10px] mt-1">Selecione acima ou digite o horário</p>}
+            </div>
 
             {/* Por onde veio */}
             <div>
@@ -491,15 +501,19 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
               </div>
             </div>
 
-            {/* Botão confirmar */}
-            {(slot || horaManual) && medicoId && data && (
-              <button onClick={handleAgendar} disabled={agendando}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition disabled:opacity-50 shadow-lg shadow-emerald-500/20">
-                {agendando
-                  ? "⏳ Agendando..."
-                  : `✅ Confirmar Agendamento — ${data.split("-").reverse().join("/")} às ${slot || horaManual}${origem ? ` · ${origem}` : ""}`}
-              </button>
-            )}
+            {/* Botão confirmar — SEMPRE visível */}
+            <button
+              onClick={handleAgendar}
+              disabled={agendando || !medicoId || !data || !horaManual}
+              className="w-full py-3.5 rounded-xl text-white font-black text-sm transition shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: (!medicoId || !data || !horaManual) ? "rgba(255,255,255,0.08)" : "linear-gradient(135deg,#059669,#047857)" }}
+            >
+              {agendando
+                ? "⏳ Agendando..."
+                : (!medicoId || !data || !horaManual)
+                ? `Preencha ${!medicoId ? "médico" : !data ? "data" : "horário"} para confirmar`
+                : `✅ Confirmar — ${data.split("-").reverse().join("/")} às ${horaManual}${origem ? `  ·  ${origem}` : ""}`}
+            </button>
           </div>
         )}
 
