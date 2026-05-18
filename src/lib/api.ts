@@ -324,14 +324,24 @@ export async function fetchUsuarios() {
 
 // ── Financeiro ────────────────────────────────────────────────────────────────
 
-export async function fetchFinanceiro({ from, to, medicoId }: { from: string; to: string; medicoId?: string }) {
+export async function fetchFinanceiro({ from, to, medicoId, forma, semData }: {
+  from?: string; to?: string; medicoId?: string; forma?: string; semData?: boolean;
+}) {
   let q = supabase
     .from("pn_financeiro")
     .select("*")
-    .gte("data_pagamento", from)
-    .lte("data_pagamento", to)
     .order("data_pagamento", { ascending: false });
+
+  if (semData) {
+    q = q.or("data_pagamento.is.null,data_pagamento.lte.1971-01-01");
+  } else {
+    if (from) q = q.gte("data_pagamento", from);
+    if (to)   q = q.lte("data_pagamento", to);
+  }
+
   if (medicoId) q = q.eq("medico_id", medicoId);
+  if (forma)    q = q.eq("forma_pagamento", forma);
+
   const { data, error } = await q;
   if (error) console.error("fetchFinanceiro", error.message);
   return data || [];

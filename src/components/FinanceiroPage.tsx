@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight } from "lucide-react";
+import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, Sparkles, AlertTriangle, Filter, ChevronDown } from "lucide-react";
 import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal } from "../lib/api";
 
 function fmt(val: number) {
@@ -374,14 +374,90 @@ function PatientHistoryModal({ nomePaciente, todasTransacoes, medicos, currentUs
   );
 }
 
+// ── Smart search parser ───────────────────────────────────────────────────────
+
+const MESES_PT = ["janeiro","fevereiro","março","marco","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const MESES_NUM: Record<string,number> = {
+  janeiro:1,fevereiro:2,"março":3,marco:3,abril:4,maio:5,junho:6,
+  julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12,
+};
+
+function parseSmartQuery(raw: string): {
+  mes?: number; ano?: number; valorMin?: number; valorMax?: number;
+  forma?: string; incompletos?: boolean; paciente?: string;
+  descricao: string;
+} {
+  const q = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const result: ReturnType<typeof parseSmartQuery> = { descricao: "" };
+  const parts: string[] = [];
+  let rest = q;
+
+  // Month
+  for (const m of MESES_PT) {
+    if (rest.includes(m.normalize("NFD").replace(/[̀-ͯ]/g, ""))) {
+      result.mes = MESES_NUM[m] ?? MESES_NUM[m.normalize("NFD").replace(/[̀-ͯ]/g, "")];
+      rest = rest.replace(m.normalize("NFD").replace(/[̀-ͯ]/g, ""), "");
+      parts.push(MESES_PT[result.mes! - 1]);
+      break;
+    }
+  }
+
+  // Year
+  const anoM = rest.match(/\b(202[0-9]|201[0-9])\b/);
+  if (anoM) { result.ano = parseInt(anoM[1]); rest = rest.replace(anoM[0], ""); parts.push(anoM[0]); }
+
+  // Valor acima / maior
+  const acimaM = rest.match(/(?:acima|maior|mais|>)\s*(?:de\s*)?r?\$?\s*(\d+(?:[.,]\d+)?)/);
+  if (acimaM) { result.valorMin = parseFloat(acimaM[1].replace(",",".")); rest = rest.replace(acimaM[0],""); parts.push(`acima de R$${result.valorMin}`); }
+
+  // Valor abaixo / menor
+  const abaixoM = rest.match(/(?:abaixo|menor|ate|até|<)\s*(?:de\s*)?r?\$?\s*(\d+(?:[.,]\d+)?)/);
+  if (abaixoM) { result.valorMax = parseFloat(abaixoM[1].replace(",",".")); rest = rest.replace(abaixoM[0],""); parts.push(`até R$${result.valorMax}`); }
+
+  // Valor exato "de X a Y"
+  const rangeM = rest.match(/de\s*r?\$?\s*(\d+(?:[.,]\d+)?)\s*a\s*r?\$?\s*(\d+(?:[.,]\d+)?)/);
+  if (rangeM) {
+    result.valorMin = parseFloat(rangeM[1].replace(",",".")); result.valorMax = parseFloat(rangeM[2].replace(",","."));
+    rest = rest.replace(rangeM[0],""); parts.push(`R$${result.valorMin}–R$${result.valorMax}`);
+  }
+
+  // Forma
+  if (/\bpix\b/.test(rest)) { result.forma = "pix"; parts.push("pix"); rest = rest.replace("pix",""); }
+  else if (/cred/.test(rest)) { result.forma = "crédito"; parts.push("crédito"); }
+  else if (/deb/.test(rest)) { result.forma = "débito"; parts.push("débito"); }
+  else if (/dinheiro|especie|espécie/.test(rest)) { result.forma = "dinheiro"; parts.push("dinheiro"); }
+
+  // Incompletos
+  if (/incompleto|faltando|sem paciente|sem data/.test(rest)) { result.incompletos = true; parts.push("dados incompletos"); }
+
+  // Restante → paciente
+  const leftover = rest.replace(/[^a-z\s]/g, "").trim().split(/\s+/).filter(w => w.length > 2 && !["com","que","nos","nas","dos","das","uma","para","pelo","pela"].includes(w));
+  if (leftover.length) { result.paciente = leftover.join(" "); parts.push(`"${result.paciente}"`); }
+
+  result.descricao = parts.join(" · ") || "Mostrando tudo";
+  return result;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
+
+type PeriodoMode = "mes_atual" | "mes_anterior" | "ano_atual" | "90dias" | "mes_especifico" | "intervalo" | "tudo";
 
 export default function FinanceiroPage() {
   const [transacoes, setTransacoes]     = useState<any[]>([]);
   const [medicos, setMedicos]           = useState<any[]>([]);
   const [medicoFiltro, setMedicoFiltro] = useState("");
-  const [periodo, setPeriodo]           = useState("mes_atual");
+  const [periodoMode, setPeriodoMode]   = useState<PeriodoMode>("mes_atual");
+  const [mesAno, setMesAno]             = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`; });
+  const [dataInicio, setDataInicio]     = useState("");
+  const [dataFim, setDataFim]           = useState("");
   const [busca, setBusca]               = useState("");
+  const [valorMin, setValorMin]         = useState("");
+  const [valorMax, setValorMax]         = useState("");
+  const [formaFiltro, setFormaFiltro]   = useState("");
+  const [somenteIncompletos, setSomenteIncompletos] = useState(false);
+  const [gptQuery, setGptQuery]         = useState("");
+  const [gptResult, setGptResult]       = useState<ReturnType<typeof parseSmartQuery> | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading]           = useState(true);
 
   // Manual entry modal
@@ -409,20 +485,32 @@ export default function FinanceiroPage() {
   const [dateFormat, setDateFormat]               = useState<"auto" | "dmy" | "mdy">("mdy");
   const [importAllDoctors, setImportAllDoctors]   = useState(false);
 
-  function getPeriodoDates(p: string) {
+  function getPeriodoDates(): { from?: string; to?: string } {
     const now = new Date();
-    if (p === "mes_atual") return {
+    if (periodoMode === "mes_atual") return {
       from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
       to:   new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString(),
     };
-    if (p === "mes_anterior") return {
+    if (periodoMode === "mes_anterior") return {
       from: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
       to:   new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString(),
     };
-    if (p === "ano_atual") return {
+    if (periodoMode === "ano_atual") return {
       from: new Date(now.getFullYear(), 0, 1).toISOString(),
       to:   new Date(now.getFullYear(), 11, 31, 23, 59, 59).toISOString(),
     };
+    if (periodoMode === "mes_especifico" && mesAno) {
+      const [y, m] = mesAno.split("-").map(Number);
+      return {
+        from: new Date(y, m - 1, 1).toISOString(),
+        to:   new Date(y, m, 0, 23, 59, 59).toISOString(),
+      };
+    }
+    if (periodoMode === "intervalo") return {
+      from: dataInicio ? `${dataInicio}T00:00:00` : undefined,
+      to:   dataFim    ? `${dataFim}T23:59:59`    : undefined,
+    };
+    if (periodoMode === "tudo") return {};
     return {
       from: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
       to:   now.toISOString(),
@@ -431,7 +519,7 @@ export default function FinanceiroPage() {
 
   async function load() {
     setLoading(true);
-    const { from, to } = getPeriodoDates(periodo);
+    const { from, to } = somenteIncompletos ? {} : getPeriodoDates();
     const [tr, med] = await Promise.all([
       fetchFinanceiro({ from, to }),
       fetchMedicos(),
@@ -441,10 +529,11 @@ export default function FinanceiroPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [periodo]);
+  useEffect(() => { load(); }, [periodoMode, mesAno, dataInicio, dataFim, somenteIncompletos]);
 
   const filtered = (() => {
     let result = transacoes;
+
     if (medicoFiltro) {
       const med = medicos.find(m => m.id === medicoFiltro);
       const baseName = med ? norm(med.nome.replace(/^(dr\.|dra\.)\s*/i, "").split(" ")[0]) : "";
@@ -453,15 +542,38 @@ export default function FinanceiroPage() {
         (baseName && norm(t.medico_nome || "").includes(baseName))
       );
     }
-    if (busca.trim()) {
-      const q = busca.toLowerCase();
+    if (formaFiltro) result = result.filter(t => t.forma_pagamento === formaFiltro);
+    if (valorMin)    result = result.filter(t => Number(t.valor || 0) >= Number(valorMin));
+    if (valorMax)    result = result.filter(t => Number(t.valor || 0) <= Number(valorMax));
+    if (somenteIncompletos) result = result.filter(t => !t.nome_paciente || !t.data_pagamento || !t.forma_pagamento);
+
+    const smart = gptResult;
+    const textSearch = busca.trim();
+    if (smart) {
+      if (smart.mes)      result = result.filter(t => t.data_pagamento && new Date(t.data_pagamento).getMonth() + 1 === smart.mes);
+      if (smart.ano)      result = result.filter(t => t.data_pagamento && new Date(t.data_pagamento).getFullYear() === smart.ano);
+      if (smart.valorMin) result = result.filter(t => Number(t.valor || 0) >= smart.valorMin!);
+      if (smart.valorMax) result = result.filter(t => Number(t.valor || 0) <= smart.valorMax!);
+      if (smart.forma)    result = result.filter(t => t.forma_pagamento === smart.forma);
+      if (smart.incompletos) result = result.filter(t => !t.nome_paciente || !t.data_pagamento || !t.forma_pagamento);
+      if (smart.paciente) {
+        const q = norm(smart.paciente);
+        result = result.filter(t =>
+          norm(t.nome_paciente || "").includes(q) || norm(t.medico_nome || "").includes(q) || norm(t.observacoes || "").includes(q)
+        );
+      }
+    } else if (textSearch) {
+      const q = norm(textSearch);
       result = result.filter(t =>
-        (t.nome_paciente || "").toLowerCase().includes(q) ||
-        (t.medico_nome   || "").toLowerCase().includes(q) ||
-        (t.observacoes   || "").toLowerCase().includes(q)
+        norm(t.nome_paciente || "").includes(q) || norm(t.medico_nome || "").includes(q) || norm(t.observacoes || "").includes(q)
       );
     }
-    return result;
+
+    return result.sort((a, b) => {
+      const da = a.data_pagamento ? new Date(a.data_pagamento).getTime() : 0;
+      const db = b.data_pagamento ? new Date(b.data_pagamento).getTime() : 0;
+      return db - da;
+    });
   })();
 
   const total       = filtered.reduce((s, t) => s + Number(t.valor || 0), 0);
@@ -695,52 +807,128 @@ export default function FinanceiroPage() {
       </div>
 
       {/* Filtros + Ações */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <select value={periodo} onChange={e => setPeriodo(e.target.value)}
-          style={{ colorScheme: 'dark' }}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
-          <option value="mes_atual">Este mês</option>
-          <option value="mes_anterior">Mês anterior</option>
-          <option value="ano_atual">Este ano (2026)</option>
-          <option value="90dias">Últimos 90 dias</option>
-        </select>
+      <div className="rounded-xl border border-white/10 p-3 space-y-2.5" style={{ background: "rgba(255,255,255,0.03)" }}>
 
-        <select value={medicoFiltro} onChange={e => setMedicoFiltro(e.target.value)}
-          style={{ colorScheme: 'dark' }}
-          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
-          <option value="">Todos os médicos</option>
-          {medicos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-        </select>
+        {/* Row 1: period presets + actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {(["mes_atual","mes_anterior","ano_atual","90dias","mes_especifico","intervalo","tudo"] as PeriodoMode[]).map(mode => {
+            const labels: Record<PeriodoMode,string> = {
+              mes_atual: "Este mês", mes_anterior: "Mês anterior", ano_atual: "Este ano",
+              "90dias": "90 dias", mes_especifico: "Mês específico", intervalo: "Intervalo", tudo: "Tudo",
+            };
+            return (
+              <button key={mode} onClick={() => setPeriodoMode(mode)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition border ${periodoMode === mode ? "bg-emerald-600 border-emerald-500 text-white" : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"}`}>
+                {labels[mode]}
+              </button>
+            );
+          })}
 
-        <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-          <input
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar paciente..."
-            className="pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 w-44"
-          />
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={exportCSV} disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition disabled:opacity-30">
+              <Download size={12} /> CSV
+            </button>
+            <button onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/30">
+              <Upload size={12} /> Importar
+            </button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+            <button onClick={() => { setForm({ ...EMPTY_FORM }); setShowModal(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-lg shadow-emerald-500/30">
+              <Plus size={13} /> Lançamento
+            </button>
+          </div>
         </div>
 
-        <span className="text-white/30 text-xs">{filtered.length} registro{filtered.length !== 1 ? "s" : ""}</span>
+        {/* Row 2: conditional date pickers */}
+        {periodoMode === "mes_especifico" && (
+          <div className="flex items-center gap-2">
+            <span className="text-white/40 text-xs">Mês/Ano:</span>
+            <input type="month" value={mesAno} onChange={e => setMesAno(e.target.value)}
+              style={{ colorScheme: "dark" }}
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+          </div>
+        )}
+        {periodoMode === "intervalo" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-white/40 text-xs">De:</span>
+            <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
+              style={{ colorScheme: "dark" }}
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+            <span className="text-white/40 text-xs">Até:</span>
+            <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
+              style={{ colorScheme: "dark" }}
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+          </div>
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={exportCSV} disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition disabled:opacity-30">
-            <Download size={12} /> Exportar CSV
+        {/* Row 3: search + filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Smart search */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Sparkles size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-violet-400 pointer-events-none" />
+            <input value={gptQuery}
+              onChange={e => { setGptQuery(e.target.value); if (!e.target.value.trim()) setGptResult(null); }}
+              onKeyDown={e => { if (e.key === "Enter" && gptQuery.trim()) { setGptResult(parseSmartQuery(gptQuery)); setBusca(""); } }}
+              placeholder='Busca inteligente: "pix acima de 500 em março" ↵'
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/50" />
+            {gptResult && (
+              <button onClick={() => { setGptResult(null); setGptQuery(""); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/80 transition">
+                <X size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* Text search */}
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <input value={busca} onChange={e => { setBusca(e.target.value); if (e.target.value) setGptResult(null); }}
+              placeholder="Paciente / médico..."
+              className="pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 w-40" />
+          </div>
+
+          {/* Médico */}
+          <select value={medicoFiltro} onChange={e => setMedicoFiltro(e.target.value)}
+            style={{ colorScheme: "dark" }}
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+            <option value="">Todos médicos</option>
+            {medicos.map(m => <option key={m.id} value={m.id}>{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</option>)}
+          </select>
+
+          {/* Forma */}
+          <select value={formaFiltro} onChange={e => setFormaFiltro(e.target.value)}
+            style={{ colorScheme: "dark" }}
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+            <option value="">Todas formas</option>
+            {FORMAS.map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+          </select>
+
+          {/* Valor range */}
+          <input type="number" min="0" value={valorMin} onChange={e => setValorMin(e.target.value)}
+            placeholder="R$ mín"
+            className="w-20 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+          <input type="number" min="0" value={valorMax} onChange={e => setValorMax(e.target.value)}
+            placeholder="R$ máx"
+            className="w-20 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+
+          {/* Incompletos toggle */}
+          <button onClick={() => setSomenteIncompletos(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition ${somenteIncompletos ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-white/5 border-white/10 text-white/40 hover:text-white"}`}>
+            <AlertTriangle size={11} /> Incompletos
           </button>
 
-          <button onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/30">
-            <Upload size={12} /> Importar Excel
-          </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
-
-          <button onClick={() => { setForm({ ...EMPTY_FORM }); setShowModal(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-lg shadow-emerald-500/30">
-            <Plus size={13} /> Lançamento
-          </button>
+          <span className="text-white/30 text-xs ml-auto">{filtered.length} reg.</span>
         </div>
+
+        {/* Smart search result label */}
+        {gptResult && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20">
+            <Sparkles size={11} className="text-violet-400 shrink-0" />
+            <span className="text-violet-300 text-xs">{gptResult.descricao}</span>
+          </div>
+        )}
       </div>
 
       {/* Charts + Table */}
