@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Brain, Copy, CheckCheck } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
@@ -36,6 +36,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [agendadoOk, setAgendadoOk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sendError, setSendError]         = useState(false);
+  const [aiAnalysis, setAiAnalysis]       = useState<any>(null);
+  const [analyzing, setAnalyzing]         = useState(false);
+  const [copied, setCopied]               = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Notas Fiscais state
@@ -113,6 +116,37 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   async function handleDelete() {
     await deleteLead(lead.id);
     onUpdated();
+  }
+
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-analyze-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MTM2NjMsImV4cCI6MjA1Nzk4OTY2M30.TLBbLCx08gkD_RWnMpZ4dBKxnb4wZgm6vTbAFaGRZ3A" },
+        body: JSON.stringify({ lead_id: lead.id }),
+      });
+      const data = await res.json();
+      if (data.ok) setAiAnalysis(data);
+      else setAiAnalysis({ error: data.error || "Erro ao analisar" });
+    } catch {
+      setAiAnalysis({ error: "Falha de conexão" });
+    }
+    setAnalyzing(false);
+  }
+
+  async function handleCopyResponse() {
+    if (!aiAnalysis?.resposta_sugerida) return;
+    await navigator.clipboard.writeText(aiAnalysis.resposta_sugerida);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleApplyStage() {
+    if (!aiAnalysis?.stage_sugerido) return;
+    await handleStageChange(aiAnalysis.stage_sugerido);
+    setAiAnalysis((prev: any) => ({ ...prev, stageApplied: true }));
   }
 
   async function loadSlots() {
@@ -223,6 +257,87 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
         {/* ── CHAT TAB ── */}
         {tab === "chat" && (
           <>
+            {/* Copiloto IA — barra de ação */}
+            <div className="flex items-center gap-2 px-5 py-2 border-b border-white/8 flex-shrink-0" style={{ background: "rgba(109,40,217,0.05)" }}>
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/80 hover:bg-violet-600 text-white text-[11px] font-black transition disabled:opacity-50"
+              >
+                <Brain size={11} className={analyzing ? "animate-pulse" : ""} />
+                {analyzing ? "Analisando..." : "🤖 Analisar com IA"}
+              </button>
+              {aiAnalysis && !aiAnalysis.error && (
+                <div className="flex items-center gap-1.5">
+                  {aiAnalysis.urgencia === "alta" && (
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">🔴 URGENTE</span>
+                  )}
+                  {aiAnalysis.urgencia === "media" && (
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">🟡 MÉDIA</span>
+                  )}
+                  {aiAnalysis.urgencia === "baixa" && (
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🟢 BAIXA</span>
+                  )}
+                </div>
+              )}
+              <span className="text-white/20 text-[10px] ml-auto">Copiloto para a secretária</span>
+            </div>
+
+            {/* Painel de análise */}
+            {aiAnalysis && (
+              <div className="mx-4 my-2 rounded-xl border flex-shrink-0 overflow-hidden" style={{
+                borderColor: aiAnalysis.error ? "rgba(239,68,68,0.3)" : "rgba(139,92,246,0.35)",
+                background: aiAnalysis.error ? "rgba(239,68,68,0.06)" : "rgba(109,40,217,0.08)",
+              }}>
+                {aiAnalysis.error ? (
+                  <p className="px-4 py-3 text-rose-300 text-xs font-bold">❌ {aiAnalysis.error}</p>
+                ) : (
+                  <div className="px-4 py-3 space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <Brain size={12} className="text-violet-400 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-violet-300 text-[10px] font-black uppercase tracking-wider mb-0.5">O que o paciente quer</p>
+                        <p className="text-white/80 text-xs leading-relaxed">{aiAnalysis.intencao}</p>
+                      </div>
+                    </div>
+
+                    {aiAnalysis.observacao && (
+                      <p className="text-white/40 text-[10px] italic border-l-2 border-violet-500/30 pl-2">{aiAnalysis.observacao}</p>
+                    )}
+
+                    {/* Resposta sugerida */}
+                    <div className="rounded-lg border border-white/10 p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+                      <p className="text-white/40 text-[10px] font-black uppercase mb-1.5">Resposta sugerida</p>
+                      <p className="text-white/80 text-xs leading-relaxed whitespace-pre-wrap">{aiAnalysis.resposta_sugerida}</p>
+                    </div>
+
+                    {/* Ações */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={handleCopyResponse}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-[11px] font-black transition"
+                      >
+                        {copied ? <CheckCheck size={11} /> : <Copy size={11} />}
+                        {copied ? "Copiado!" : "Copiar resposta"}
+                      </button>
+                      {aiAnalysis.stage_sugerido && aiAnalysis.stage_sugerido !== stage && (
+                        <button
+                          onClick={handleApplyStage}
+                          disabled={aiAnalysis.stageApplied}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600/80 hover:bg-sky-600 text-white text-[11px] font-black transition disabled:opacity-50"
+                        >
+                          {aiAnalysis.stageApplied ? "✓ Aplicado" : `Mover → ${aiAnalysis.stage_sugerido.replace(/_/g, " ")}`}
+                        </button>
+                      )}
+                      <button onClick={() => setAiAnalysis(null)} className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 min-h-0">
               {messages.length === 0 && (
                 <p className="text-white/20 text-xs text-center py-8">Sem mensagens ainda</p>

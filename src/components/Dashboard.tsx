@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
@@ -30,6 +30,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   const [newLeadAlert, setNewLeadAlert] = useState(false);
   const [newMsgAlert,  setNewMsgAlert]  = useState(false);
+  const [filterHoje, setFilterHoje]     = useState(false);
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -168,6 +169,17 @@ export default function Dashboard({ user }: { user: any }) {
 
   const roleLabel: Record<string, string> = { gerente: "GERENTE", secretaria: "SECRETÁRIA", medico: "MÉDICO", admin: "ADMIN" };
 
+  // "Hoje em Brasília" começa às 03:00 UTC (UTC-3)
+  const brasiliaToday = (() => {
+    const d = new Date();
+    const br = new Date(d.getTime() - 3 * 3600000);
+    br.setUTCHours(0, 0, 0, 0);
+    return new Date(br.getTime() + 3 * 3600000);
+  })();
+  const filteredLeads = filterHoje
+    ? leads.filter(l => new Date(l.created_at) >= brasiliaToday)
+    : leads;
+
   const firstName = (user.nome || "").split(" ")[0];
   const brHour    = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
   const saudacao  = brHour < 12 ? "Bom dia" : brHour < 18 ? "Boa tarde" : "Boa noite";
@@ -227,16 +239,33 @@ export default function Dashboard({ user }: { user: any }) {
             })}
           </div>
 
-          {/* Search */}
+          {/* Search + Filtro Hoje */}
           {page === "kanban" && (
-            <div className="relative max-w-xs w-full hidden sm:block ml-2">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-              <input
-                value={search}
-                onChange={handleSearch}
-                placeholder="Buscar paciente..."
-                className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
-              />
+            <div className="flex items-center gap-2 ml-2">
+              <div className="relative max-w-xs w-full hidden sm:block">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={handleSearch}
+                  placeholder="Buscar paciente..."
+                  className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
+                />
+              </div>
+              <button
+                onClick={() => setFilterHoje(f => !f)}
+                title={filterHoje ? "Mostrando só leads de hoje — clique para ver todos" : "Filtrar por leads de hoje"}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
+                  filterHoje
+                    ? "bg-sky-600 text-white border-sky-500/50 shadow-lg shadow-sky-500/20"
+                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
+                }`}
+              >
+                <Filter size={11} />
+                <span className="hidden sm:inline">Hoje</span>
+                {filterHoje && filteredLeads.length > 0 && (
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[9px] font-black">{filteredLeads.length}</span>
+                )}
+              </button>
             </div>
           )}
 
@@ -361,7 +390,7 @@ export default function Dashboard({ user }: { user: any }) {
             <div className="flex items-center justify-center h-full text-white/30 text-sm">Carregando leads...</div>
           ) : (
             <div className="h-full px-4 sm:px-6 pb-6">
-              <Pipeline leads={leads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} />
+              <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} />
             </div>
           )
         )}
