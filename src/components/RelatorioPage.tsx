@@ -283,6 +283,14 @@ export default function RelatorioPage() {
         }
       }
 
+      // Leads que tiveram contato humano (não Maria IA)
+      const leadsComRespostaHumana = new Set<string>();
+      for (const m of waMsgs) {
+        if (m.direction === "out" && m.sender_nome && m.sender_nome !== "Maria IA" && m.lead_id) {
+          leadsComRespostaHumana.add(m.lead_id);
+        }
+      }
+
       const semResposta  = [...leadsComMsg].filter(id => !leadsComResposta.has(id)).length;
       const pctResposta  = leadsComMsg.size > 0 ? Math.round(leadsComResposta.size / leadsComMsg.size * 100) : 0;
       const mariaOut     = senderMap["Maria IA"] || 0;
@@ -328,6 +336,7 @@ export default function RelatorioPage() {
         senderMap, hourMap, peakIn, peakHour,
         leadsAtivos: leadsComMsg.size,
         leadsRespondidos: leadsComResposta.size,
+        leadsComRespostaHumana: leadsComRespostaHumana.size,
         horasSemCobertura, totalGap, peakAM, peakPM,
         dayEntries, dayPeak, heatmap, heatmaxVal,
       });
@@ -450,6 +459,31 @@ export default function RelatorioPage() {
                   <p className="text-white font-black text-2xl leading-none">{waStats.pctMaria}%</p>
                   <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Maria IA</p>
                   <p className="text-white/25 text-[10px] mt-0.5">{waStats.mariaOut} msgs · {waStats.humanOut} manual</p>
+                </div>
+              </div>
+
+              {/* Pacientes que falaram com a recepção */}
+              <div className="rounded-2xl border border-emerald-500/25 p-4" style={{ background: "rgba(16,185,129,0.06)" }}>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+                    <PhoneCall size={20} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-emerald-300 font-black text-3xl leading-none">{waStats.leadsComRespostaHumana}</p>
+                    <p className="text-white/60 text-xs font-black uppercase tracking-wider mt-1">Pacientes que falaram com a recepção</p>
+                    <p className="text-white/25 text-[10px] mt-0.5">
+                      leads com pelo menos 1 resposta humana (Mônica, Thamires ou equipe) no período
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-emerald-300 font-black text-2xl leading-none">
+                      {waStats.leadsAtivos > 0 ? Math.round(waStats.leadsComRespostaHumana / waStats.leadsAtivos * 100) : 0}%
+                    </p>
+                    <p className="text-white/30 text-[10px] mt-0.5">dos leads ativos</p>
+                    <p className="text-white/20 text-[10px]">
+                      {waStats.leadsAtivos - waStats.leadsComRespostaHumana} sem contato humano
+                    </p>
+                  </div>
                 </div>
               </div>
 

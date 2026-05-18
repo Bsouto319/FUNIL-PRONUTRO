@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
@@ -31,8 +31,11 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
   const [filterHoje, setFilterHoje]       = useState(false);
-  const [organizing, setOrganizing]       = useState(false);
-  const [organizeMsg, setOrganizeMsg]     = useState("");
+  const [organizing, setOrganizing]         = useState(false);
+  const [organizeMsg, setOrganizeMsg]       = useState("");
+  const [notifications, setNotifications]   = useState<any[]>([]);
+  const [toasts, setToasts]                 = useState<any[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -90,6 +93,38 @@ export default function Dashboard({ user }: { user: any }) {
     load();
     fetchMariaGlobalMode().then(setMariaActive);
     fetchLatestInsight().then(setBriefing);
+
+    // Carrega notificações não lidas
+    supabase.from("pn_notifications").select("*").eq("read", false)
+      .order("created_at", { ascending: false }).limit(30)
+      .then(({ data }) => setNotifications(data || []));
+
+    // Realtime: nova notificação da IA
+    const notifChannel = supabase
+      .channel("pn_notifications_rt")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_notifications" }, (payload) => {
+        const n = payload.new as any;
+        setNotifications(prev => [n, ...prev]);
+        // Toast por 10 segundos
+        setToasts(prev => [...prev, n]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 10000);
+        // Som de alerta
+        try {
+          const ctx = new AudioContext();
+          [880, 1100, 1320].forEach((freq, i) => {
+            const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.type = "sine"; osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
+            gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + i * 0.12 + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.35);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + i * 0.12); osc.stop(ctx.currentTime + i * 0.12 + 0.4);
+          });
+        } catch {}
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(notifChannel); };
   }, []);
 
   useEffect(() => {
@@ -170,6 +205,23 @@ export default function Dashboard({ user }: { user: any }) {
     setOrganizeMsg(`✅ ${changed} lead${changed !== 1 ? "s" : ""} reorganizado${changed !== 1 ? "s" : ""}`);
     setOrganizing(false);
     setTimeout(() => setOrganizeMsg(""), 4000);
+  }
+
+  function handleNotifClick(n: any) {
+    const lead = leads.find(l => l.id === n.lead_id);
+    if (lead) setSelected(lead);
+    setShowNotifPanel(false);
+    if (!n.read) {
+      supabase.from("pn_notifications").update({ read: true }).eq("id", n.id);
+      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+    }
+  }
+
+  function markAllRead() {
+    const ids = notifications.filter(n => !n.read).map(n => n.id);
+    if (!ids.length) return;
+    supabase.from("pn_notifications").update({ read: true }).in("id", ids);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }
 
   async function handleCreateLead(e: React.FormEvent) {
@@ -355,6 +407,64 @@ export default function Dashboard({ user }: { user: any }) {
               <RefreshCw size={14} className={`text-white/60 ${refreshing ? "animate-spin" : ""}`} />
             </button>
 
+            {/* Sino de notificações */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifPanel(s => !s)}
+                className={`relative p-2 rounded-xl border transition ${showNotifPanel ? "bg-violet-600/30 border-violet-500/40" : "bg-white/5 hover:bg-white/10 border-white/10"}`}
+                title="Notificações da IA"
+              >
+                <Bell size={14} className={notifications.some(n => !n.read) ? "text-violet-300" : "text-white/50"} />
+                {notifications.some(n => !n.read) && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-violet-500 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-lg shadow-violet-500/40">
+                    {notifications.filter(n => !n.read).length > 9 ? "9+" : notifications.filter(n => !n.read).length}
+                  </span>
+                )}
+              </button>
+
+              {showNotifPanel && (
+                <div className="absolute right-0 top-11 w-80 rounded-2xl border border-white/10 shadow-2xl z-50 overflow-hidden"
+                  style={{ background: "rgba(10,20,60,0.97)", backdropFilter: "blur(16px)" }}>
+                  <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Brain size={13} className="text-violet-400" />
+                      <span className="text-white font-black text-sm">Insights da IA</span>
+                    </div>
+                    {notifications.some(n => !n.read) && (
+                      <button onClick={markAllRead} className="text-white/35 text-[10px] hover:text-white/60 transition font-bold">
+                        marcar lidas
+                      </button>
+                    )}
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-10 text-center">
+                      <Bell size={24} className="text-white/15 mx-auto mb-2" />
+                      <p className="text-white/25 text-xs">Nenhuma notificação ainda</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-white/5 max-h-80 overflow-y-auto">
+                      {notifications.map(n => (
+                        <button key={n.id} onClick={() => handleNotifClick(n)}
+                          className={`w-full px-4 py-3 text-left hover:bg-white/5 transition group ${n.read ? "opacity-40" : ""}`}>
+                          <div className="flex items-start gap-2">
+                            <span className="text-base leading-none shrink-0 mt-0.5">
+                              {n.type === "retorno" ? "🔄" : n.type === "urgente" ? "🔴" : "🎯"}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white font-black text-xs truncate">{n.lead_name}</p>
+                              <p className="text-white/65 text-[11px] leading-relaxed mt-0.5">{n.message}</p>
+                              <p className="text-white/20 text-[9px] mt-1">{new Date(n.created_at).toLocaleString("pt-BR")}</p>
+                            </div>
+                            {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0 mt-1 animate-pulse" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => signOut()}
               className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 transition"
@@ -511,6 +621,41 @@ export default function Dashboard({ user }: { user: any }) {
           onUpdated={() => { load(); setSelected(null); }}
         />
       )}
+
+      {/* Toasts de notificação da IA — canto inferior direito */}
+      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+        {toasts.map(n => (
+          <div key={n.id}
+            className="pointer-events-auto flex items-start gap-3 pl-4 pr-3 py-3 rounded-2xl border shadow-2xl max-w-xs"
+            style={{
+              background: "rgba(10,20,60,0.97)",
+              backdropFilter: "blur(16px)",
+              borderColor: n.type === "urgente" ? "rgba(239,68,68,0.45)" : n.type === "retorno" ? "rgba(34,197,94,0.4)" : "rgba(139,92,246,0.4)",
+              animation: "slideIn 0.3s ease",
+            }}>
+            <span className="text-xl leading-none shrink-0 mt-0.5">
+              {n.type === "retorno" ? "🔄" : n.type === "urgente" ? "🔴" : "🎯"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-violet-300 text-[9px] font-black uppercase tracking-wider mb-0.5">🤖 Maria detectou</p>
+              <p className="text-white font-black text-xs">{n.lead_name}</p>
+              <p className="text-white/70 text-[11px] leading-relaxed mt-0.5">{n.message}</p>
+              <button
+                onClick={() => handleNotifClick(n)}
+                className="mt-1.5 text-[10px] font-black text-violet-400 hover:text-violet-300 transition underline underline-offset-2"
+              >
+                Ver conversa →
+              </button>
+            </div>
+            <button onClick={() => setToasts(prev => prev.filter(t => t.id !== n.id))}
+              className="shrink-0 p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition self-start">
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:translateX(0); } }`}</style>
     </div>
   );
 }
