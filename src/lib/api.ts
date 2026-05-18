@@ -1,11 +1,12 @@
 ﻿import { supabase } from "./supabase";
 
 export const STAGES = [
-  { key: "novo_lead",      label: "Novo Lead",       color: "bg-green-400/15 text-green-300",    headerBg: "#16a34a" },
-  { key: "maria_ia",       label: "Maria IA",        color: "bg-sky-400/15 text-sky-300",        headerBg: "#0284c7" },
-  { key: "interesse_real", label: "Interesse Real",  color: "bg-amber-400/15 text-amber-300",    headerBg: "#d97706" },
+  { key: "novo_lead",      label: "Novo Lead",       color: "bg-green-400/15 text-green-300",     headerBg: "#16a34a" },
+  { key: "maria_ia",       label: "Maria IA",        color: "bg-sky-400/15 text-sky-300",         headerBg: "#0284c7" },
+  { key: "interesse_real", label: "Interesse Real",  color: "bg-amber-400/15 text-amber-300",     headerBg: "#d97706" },
   { key: "agendado",       label: "Agendado",        color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669" },
-  { key: "perdido",        label: "Perdido",         color: "bg-rose-400/15 text-rose-300",      headerBg: "#dc2626" },
+  { key: "resolvido",      label: "Resolvido",       color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5" },
+  { key: "perdido",        label: "Perdido",         color: "bg-rose-400/15 text-rose-300",       headerBg: "#dc2626" },
 ];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -296,7 +297,7 @@ export async function setMariaGlobalMode(active: boolean): Promise<void> {
   });
   if (active) {
     await supabase.from("pn_leads").update({ ai_mode: true, updated_at: new Date().toISOString() })
-      .not("stage", "in", '("agendado","perdido")');
+      .not("stage", "in", '("agendado","resolvido","perdido")');
   }
 }
 

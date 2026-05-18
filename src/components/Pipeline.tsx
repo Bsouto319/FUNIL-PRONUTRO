@@ -9,7 +9,7 @@ interface Props {
   currentUser: any;
 }
 
-const PROTECTED = ["perdido"];
+const PROTECTED = ["resolvido", "perdido"];
 
 function minutesSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);

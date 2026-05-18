@@ -133,6 +133,7 @@ const FUNIL_STAGES = [
   { key: "maria_ia",       label: "Maria IA",   color: "#0284c7" },
   { key: "interesse_real", label: "Interesse",  color: "#d97706" },
   { key: "agendado",       label: "Agendado",   color: "#059669" },
+  { key: "resolvido",      label: "Resolvido",  color: "#4f46e5" },
   { key: "perdido",        label: "Perdido",    color: "#dc2626" },
 ];
 
