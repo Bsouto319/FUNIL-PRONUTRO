@@ -105,10 +105,16 @@ export async function fetchMessages(leadId: string) {
 
 export async function sendMessage(leadId: string, phone: string, text: string, senderNome: string) {
   try {
-    const { data, error } = await supabase.functions.invoke("pn-send-message", {
-      body: { lead_id: leadId, phone, text, sender_nome: senderNome },
+    const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-send-message", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI2NjAzNzksImV4cCI6MjA1ODIzNjM3OX0.7FHQBDanLLvuSqfSBP3MdBU3xkIb3kVMjXSi3trmJh8",
+      },
+      body: JSON.stringify({ lead_id: leadId, phone, text, sender_nome: senderNome }),
     });
-    if (error) { console.error("sendMessage", error); return false; }
+    if (!res.ok) return false;
+    const data = await res.json();
     return data?.ok === true;
   } catch (e) {
     console.error("sendMessage", e);
