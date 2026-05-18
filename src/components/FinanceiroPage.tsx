@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle } from "lucide-react";
-import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal } from "../lib/api";
+import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes } from "../lib/api";
 
 function fmt(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -456,6 +456,8 @@ export default function FinanceiroPage() {
   const [formaFiltro, setFormaFiltro]   = useState("");
   const [somenteIncompletos, setSomenteIncompletos] = useState(false);
   const [gptResult, setGptResult]       = useState<ReturnType<typeof parseSmartQuery> | null>(null);
+  const [pendentes, setPendentes]       = useState<any[]>([]);
+  const [showPendentes, setShowPendentes] = useState(true);
   const [loading, setLoading]           = useState(true);
 
   // Manual entry modal
@@ -528,6 +530,7 @@ export default function FinanceiroPage() {
   }
 
   useEffect(() => { load(); }, [periodoMode, mesAno, dataInicio, dataFim, somenteIncompletos]);
+  useEffect(() => { fetchAgendamentosPendentes().then(setPendentes); }, []);
 
   const filtered = (() => {
     let result = transacoes;
@@ -809,6 +812,61 @@ export default function FinanceiroPage() {
 
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
+
+      {/* Lembrete de Cobrança */}
+      {pendentes.length > 0 && (
+        <div className="rounded-xl border border-amber-500/25 overflow-hidden" style={{ background: "rgba(245,158,11,0.06)" }}>
+          <button
+            onClick={() => setShowPendentes(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚠️</span>
+              <span className="text-amber-300 text-xs font-black">Lembrete de Cobrança</span>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                {pendentes.length} consulta{pendentes.length !== 1 ? "s" : ""} nos últimos 14 dias
+              </span>
+            </div>
+            <span className="text-amber-400/50 text-xs">{showPendentes ? "▲" : "▼"}</span>
+          </button>
+
+          {showPendentes && (
+            <div className="border-t border-amber-500/15 divide-y divide-white/5">
+              {pendentes.map(ag => {
+                const nome   = ag.nome_paciente || ag.lead?.name || "—";
+                const fone   = ag.telefone_paciente || ag.lead?.phone || "";
+                const medico = ag.medico?.nome?.replace(/^(Dr\.|Dra\.) /, "") || "—";
+                const valor  = ag.medico?.valor;
+                const d      = new Date(ag.data_hora);
+                const diasAtras = Math.floor((Date.now() - d.getTime()) / 86400000);
+                return (
+                  <div key={ag.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0 text-amber-400 font-black text-xs">
+                      {nome[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white/80 text-xs font-bold truncate">{nome}</p>
+                      <p className="text-white/35 text-[10px]">{medico} · {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · {diasAtras === 0 ? "hoje" : `${diasAtras}d atrás`}</p>
+                    </div>
+                    {valor && (
+                      <span className="text-emerald-400 font-black text-xs shrink-0">
+                        {Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    )}
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${ag.status === "realizado" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/20 text-amber-400 border border-amber-500/30"}`}>
+                      {ag.status === "realizado" ? "REALIZADO" : "AGENDADO"}
+                    </span>
+                    {fone && (
+                      <a href={`https://wa.me/${fone}`} target="_blank" rel="noreferrer"
+                        className="shrink-0 text-[10px] text-emerald-400/60 hover:text-emerald-300 transition">WA</a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

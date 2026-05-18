@@ -622,6 +622,20 @@ export async function vincularFinanceiroLeads(): Promise<number> {
   return linked;
 }
 
+export async function fetchAgendamentosPendentes() {
+  const now     = new Date().toISOString();
+  const past14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("pn_agendamentos")
+    .select("id, data_hora, status, tipo_consulta, nome_paciente, telefone_paciente, medico:pn_medicos(nome, valor), lead:pn_leads(id, name, phone)")
+    .in("status", ["confirmado", "realizado"])
+    .lte("data_hora", now)
+    .gte("data_hora", past14d)
+    .order("data_hora", { ascending: false });
+  if (error) console.error("fetchAgendamentosPendentes", error.message);
+  return data || [];
+}
+
 export function exportLeadsCSV(leads: any[]) {
   const headers = ["Nome", "Telefone", "Stage", "Médico", "Resumo IA", "Entrada"];
   const rows = leads.map(l => [

@@ -27,8 +27,49 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadMsg, setNewLeadMsg]   = useState("");
   const [briefing, setBriefing]       = useState<any>(null);
 
+  const [newLeadAlert, setNewLeadAlert] = useState(false);
+  const [newMsgAlert,  setNewMsgAlert]  = useState(false);
+
   const searchRef = useRef(search);
   searchRef.current = search;
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
+  function playNewLeadSound() {
+    try {
+      const ctx = new AudioContext();
+      [[880, 0], [1100, 0.18]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + delay + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.5);
+      });
+    } catch {}
+  }
+
+  function playNewMessageSound() {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(500, ctx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {}
+  }
 
   const load = useCallback(async (q?: string) => {
     const query = q !== undefined ? q : searchRef.current;
@@ -46,13 +87,33 @@ export default function Dashboard({ user }: { user: any }) {
   }, []);
 
   useEffect(() => {
-    const channel = supabase
+    const leadsChannel = supabase
       .channel("pn_leads_rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pn_leads" }, () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_leads" }, () => {
+        playNewLeadSound();
+        if (pageRef.current !== "kanban") setNewLeadAlert(true);
+        load();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pn_leads" }, () => load())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pn_leads" }, () => load())
       .subscribe();
-    // Fallback: polling a cada 15s caso o realtime caia silenciosamente
+
+    const msgChannel = supabase
+      .channel("pn_mensagens_rt")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens" }, (payload) => {
+        if ((payload.new as any)?.direction === "in") {
+          playNewMessageSound();
+          if (pageRef.current !== "kanban") setNewMsgAlert(true);
+        }
+      })
+      .subscribe();
+
     const interval = setInterval(() => load(), 15000);
-    return () => { supabase.removeChannel(channel); clearInterval(interval); };
+    return () => {
+      supabase.removeChannel(leadsChannel);
+      supabase.removeChannel(msgChannel);
+      clearInterval(interval);
+    };
   }, [load]);
 
   async function handleToggleMaria() {
@@ -136,15 +197,27 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-1 ml-2">
-            {(["kanban", "agenda", "financeiro", "relatorio", "admin"] as Page[]).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
-              >
-                {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : "Admin"}
-              </button>
-            ))}
+            {(["kanban", "agenda", "financeiro", "relatorio", "admin"] as Page[]).map(p => {
+              const isKanban = p === "kanban";
+              const hasAlert = isKanban && (newLeadAlert || newMsgAlert);
+              return (
+                <button
+                  key={p}
+                  onClick={() => { setPage(p); if (isKanban) { setNewLeadAlert(false); setNewMsgAlert(false); } }}
+                  className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+                >
+                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : "Admin"}
+                  {hasAlert && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                        style={{ backgroundColor: newLeadAlert ? "#22c55e" : "#f59e0b" }} />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5"
+                        style={{ backgroundColor: newLeadAlert ? "#22c55e" : "#f59e0b" }} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Search */}
