@@ -96,7 +96,7 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
   const lastMsg = lead.last_message_at ?? lead.created_at;
   const isNew   = minutesSince(lead.created_at) < 60;
   const idleMin = minutesSince(lastMsg);
-  const semAtend = !PROTECTED.includes(stageKey) && idleMin >= 120;
+  const semAtend = lead.ai_mode && !PROTECTED.includes(stageKey) && idleMin >= 120;
   const mariaAtiva = lead.ai_mode && !PROTECTED.includes(stageKey) && idleMin < 120;
 
   // Card visual state

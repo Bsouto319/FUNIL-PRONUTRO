@@ -104,24 +104,12 @@ export async function fetchMessages(leadId: string) {
 }
 
 export async function sendMessage(leadId: string, phone: string, text: string, senderNome: string) {
-  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
-  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
   try {
-    const res = await fetch(`${baseUrl}/send/text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: phone, text: senderNome ? `*${senderNome}:*\n${text}` : text }),
+    const { data, error } = await supabase.functions.invoke("pn-send-message", {
+      body: { lead_id: leadId, phone, text, sender_nome: senderNome },
     });
-    if (res.ok) {
-      await supabase.from("pn_mensagens").insert({
-        lead_id: leadId,
-        body: text,
-        direction: "out",
-        sender_nome: senderNome,
-        created_at: new Date().toISOString(),
-      });
-    }
-    return res.ok;
+    if (error) { console.error("sendMessage", error); return false; }
+    return data?.ok === true;
   } catch (e) {
     console.error("sendMessage", e);
     return false;

@@ -35,6 +35,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [agendando, setAgendando] = useState(false);
   const [agendadoOk, setAgendadoOk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sendError, setSendError]         = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Notas Fiscais state
@@ -89,8 +90,14 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     e.preventDefault();
     if (!text.trim() || sending) return;
     setSending(true);
-    await sendMessage(lead.id, lead.phone, text.trim(), currentUser.nome);
-    setText("");
+    setSendError(false);
+    const ok = await sendMessage(lead.id, lead.phone, text.trim(), currentUser.nome);
+    if (ok) {
+      setText("");
+    } else {
+      setSendError(true);
+      setTimeout(() => setSendError(false), 4000);
+    }
     setSending(false);
   }
 
@@ -263,13 +270,20 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
               })}
               <div ref={bottomRef} />
             </div>
-            <form onSubmit={handleSend} className="flex gap-2 px-5 py-3 border-t border-white/10 flex-shrink-0">
-              <input value={text} onChange={e => setText(e.target.value)} placeholder="Mensagem..."
-                className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition" />
-              <button type="submit" disabled={sending || !text.trim()}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-40">
-                <Send size={14} />
-              </button>
+            <form onSubmit={handleSend} className="flex flex-col gap-1.5 px-5 py-3 border-t border-white/10 flex-shrink-0">
+              {sendError && (
+                <p className="text-xs text-red-400 font-bold flex items-center gap-1">
+                  <AlertCircle size={12} /> Falha ao enviar — verifique a conexão com WhatsApp
+                </p>
+              )}
+              <div className="flex gap-2">
+                <input value={text} onChange={e => setText(e.target.value)} placeholder="Mensagem..."
+                  className={`flex-1 px-3 py-2 rounded-xl bg-white/5 border text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 transition ${sendError ? "border-red-500/50 focus:ring-red-500/30" : "border-white/10 focus:ring-emerald-500/50"}`} />
+                <button type="submit" disabled={sending || !text.trim()}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-40">
+                  <Send size={14} />
+                </button>
+              </div>
             </form>
           </>
         )}
