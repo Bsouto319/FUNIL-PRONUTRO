@@ -984,9 +984,9 @@ export default function FinanceiroPage() {
           ) : filtered.length === 0 ? (
             <div className="py-12 text-center text-white/20 text-sm">Nenhuma transação encontrada</div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[520px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10" style={{ background: "rgba(14,26,70,0.97)" }}>
                   <tr className="border-b border-white/5">
                     <th className="text-left px-4 py-2.5 text-white/30 font-bold">Data</th>
                     <th className="text-left px-4 py-2.5 text-white/30 font-bold">Paciente</th>
@@ -1035,8 +1035,8 @@ export default function FinanceiroPage() {
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t border-white/10 bg-white/[0.02]">
+                <tfoot className="sticky bottom-0" style={{ background: "rgba(14,26,70,0.97)" }}>
+                  <tr className="border-t border-white/10">
                     <td colSpan={3} className="px-4 py-3 text-white/40 text-xs font-bold">TOTAL</td>
                     <td className="hidden sm:table-cell" />
                     <td className="px-4 py-3 text-right text-emerald-300 font-black text-sm">{fmt(total)}</td>
