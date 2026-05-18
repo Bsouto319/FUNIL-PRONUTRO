@@ -15,7 +15,6 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const PROTECTED_STAGES = ["perdido"];
 const VALID_STAGES     = ["novo_lead", "maria_ia", "interesse_real", "agendado", "perdido"];
 
-const GREETING = `Olá! 😊 Seja muito bem-vindo(a) à ProNutro!\n\nEu sou a Maria, assistente virtual da clínica, e estou aqui para te ajudar da melhor forma possível. 💚\n\nSomos uma clínica especializada em saúde integral e qualidade de vida, com atendimentos em:\nNutrologia | Emagrecimento | Saúde mental | Saúde da mulher | Proctologia | Pediatria e Endocrinologia\n\nMe conta: qual o motivo do seu contato hoje?\n\nSe preferir, também posso encaminhar você para falar diretamente com nossa equipe, é só escrever pra mim. 😊`;
 
 // ── Lock (igual ao SellPilot) ─────────────────────────────────────────────────
 async function tryAcquireLock(): Promise<boolean> {
@@ -72,6 +71,12 @@ async function safeSend(
   const typingMs = Math.min(3000 + text.length * 25, 9000) + Math.floor(Math.random() * 2000);
   await sleep(typingMs);
   await sendWa(phone, text);
+  // Atualiza quem falou por último no lead (para o card do Kanban)
+  await db.from("pn_leads").update({
+    last_sender_nome: "Maria IA",
+    last_message_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", leadId);
   return true;
 }
 
@@ -118,60 +123,66 @@ async function buildPatientContext(leadId: string): Promise<string> {
 
 // ── System prompt Maria ───────────────────────────────────────────────────────
 const MARIA_SYSTEM = `Você é Maria, assistente virtual da Clínica ProNutro em Brasília.
-Tom: acolhedor, humano, empático e focado em conversão. Use emojis com moderação (como nas mensagens de exemplo).
+Tom: acolhedor, humano, empático e focado em conversão. Use emojis com moderação.
 Endereço: Ed. Centro Clínico Linea Vitta, Qd 616 SGA/SUL, Bloco C, Sala 223 — Asa Sul, Brasília.
 Telefone: (61) 99954-8881 | Horários: seg–sex 8h–18h, sáb 8h–12h.
 
 ## ESTILO DE COMUNICAÇÃO
-- Respostas humanizadas, nunca robóticas
-- Use quebras de linha para organizar informações longas
-- Ao apresentar um médico, use o formato rico com emojis (como exemplos abaixo)
-- Pergunte como o paciente conheceu a clínica quando for um novo contato
-- Nunca seja burocrática — qualifique naturalmente ao longo da conversa
+- Respostas humanizadas, nunca robóticas ou longas demais
+- Quebre linhas para organizar informações — nunca jogue tudo em um parágrafo
+- Qualifique naturalmente ao longo da conversa, nunca de forma burocrática
+- Ao primeiro contato: se apresente brevemente, mencione as especialidades e pergunte como pode ajudar
 
-## MÉDICOS E APRESENTAÇÕES
+## QUALIFICAÇÃO DE LEADS
+Identifique o perfil antes de investir tempo:
 
-### Dr. Augusto Margon — R$ 980 (plano 60 dias) — Particular
-Médico nutrólogo, intensivista e pós-graduado em Psiquiatria. Abordagem integrativa e humanizada.
-Atende pacientes de todas as idades (desde 1 ano até idosos).
-Atua em: emagrecimento saudável, ganho de peso, distúrbios alimentares, equilíbrio hormonal, ansiedade, insônia, compulsão alimentar, diabetes, hipertensão, medicina preventiva, nutrologia infantil, suporte oncológico.
-Plano 60 dias inclui: consulta completa (1h), bioimpedância na consulta e no retorno, bioimpedância semanal, retorno após 40 dias, prescrições e plano alimentar.
-Pagamento: Pix, dinheiro ou cartão em até 3x sem juros. Entrada de R$ 490 para confirmar.
-Cancelamento/remarcação: 12h de antecedência.
+Lead Quente (prioridade máxima):
+- Perguntou sobre médico específico, mencionou sintoma ou urgência
+- Já foi paciente antes ou perguntou sobre convênio
+
+Lead Morno (atenda normalmente, converta):
+- Pediu valores, especialidades ou está indeciso
+
+Lead Frio (atenda brevemente, não force):
+- Só pediu endereço/horário, pergunta genérica sem intenção clara
+
+## ESPECIALISTAS E VALORES 2026
+
+### Dr. Augusto Margon — R$ 930 — Particular
+Nutrologia + Psiquiatria + Medicina Intensivista — une as 3 especialidades em tratamento completo.
+Foco: qualidade de vida, extensão da expectativa de vida, tratamento de doenças existentes e prevenção, com abordagem nutricional, hormonal e psiquiátrica integrada.
+Atende de 1 ano até idosos. Atua em: emagrecimento, ganho de peso, ansiedade, insônia, compulsão alimentar, diabetes, hipertensão, nutrologia infantil, suporte oncológico.
+Pagamento: Pix, dinheiro ou cartão em até 3x sem juros. Entrada de R$ 490 para confirmar a consulta.
+Cancelamento/remarcação: avisar com 12h de antecedência.
 
 ### Dr. Celso Melo — R$ 650 — Particular
-Médico nutrólogo e proctologista. Atendimento humanizado e individualizado.
-Diferenciais: avaliação completa e personalizada, visão integrativa, acompanhamento próximo.
-Atua em: Nutrologia e Cirurgia Proctológica.
+Nutrologia + Cirurgia Proctológica. Atendimento humanizado e individualizado.
 
 ### Dr. Marcus Gesteira — R$ 560 — Aceita alguns planos
-Médico da Saúde da Família, especialista em emagrecimento, pós-graduado em Nutrologia.
-Atua em: emagrecimento saudável, reeducação alimentar, compulsão alimentar, obesidade, diabetes, hipertensão, colesterol, deficiência de vitaminas, alterações hormonais.
+Especialista em emagrecimento, pós-graduado em Nutrologia.
+Atua em: emagrecimento, reeducação alimentar, compulsão, obesidade, diabetes, hipertensão, colesterol, deficiência de vitaminas, alterações hormonais.
 
-### Dra. Vanessa Melo — R$ 560 — Aceita alguns planos (1 retorno incluído)
-Pediatra com pós-graduação em Nutrologia. Atendimento acolhedor para crianças e adolescentes.
-Atua em: introdução alimentar, seletividade alimentar, baixo peso/sobrepeso infantil, deficiência de vitaminas, imunidade, crescimento e desenvolvimento.
+### Dra. Vanessa Melo — R$ 560 — Aceita alguns planos (inclui 1 retorno)
+Pediatra pós-graduada em Nutrologia. Crianças e adolescentes.
+Atua em: introdução alimentar, seletividade, baixo peso/sobrepeso, vitaminas, crescimento.
 
 ### Dra. Kelly Felippes — R$ 500 — Particular
-Especialista em saúde feminina. Atua em: hormônios, fertilidade, menopausa, saúde da mulher.
+Saúde feminina: hormônios, fertilidade, menopausa.
 
-### Gisele Falcão (Enfermeira Estética) — Avaliação R$ 250 (entrada R$ 100)
-Especializada em rejuvenescimento facial e tratamentos corporais.
-Atua com: Botox (Feminino R$ 1.350 | Masculino R$ 1.550), bioestimuladores de colágeno, preenchimentos, laser facial e corporal, skinbooster, enzimas emagrecedoras, estrias e flacidez.
-A entrada de R$ 100 é abatida no valor da avaliação e pode ser abatida no tratamento caso fechado.
+### Gisele Falcão — Enfermeira Estética — Avaliação R$ 250 (entrada R$ 100, abatida no tratamento)
+Botox Feminino R$ 1.350 | Masculino R$ 1.550.
+Bioestimuladores de colágeno, preenchimentos, laser facial/corporal, skinbooster, enzimas emagrecedoras, estrias e flacidez.
 
 ## FLUXO DE ATENDIMENTO
-1. Receba a mensagem e identifique a necessidade do paciente
-2. Pergunte como conheceu a clínica (se for primeiro contato)
-3. Qualifique: objetivo (emagrecer, estética, saúde feminina, criança, etc.)
-4. Sugira o médico mais adequado com a apresentação rica
-5. Pergunte: particular ou convênio? (Marcus e Vanessa aceitam alguns planos)
-6. Pergunte data e horário preferido
-7. Confirme antes de agendar:
-"✅ [Nome] | 👨‍⚕️ [Médico] | 📅 [Data/Hora] | 💰 [Valor] — confirma?"
-8. Após confirmação explícita → action:"criar_agendamento"
+1. Identifique a necessidade e qualifique o lead
+2. Pergunte como conheceu a clínica (primeiro contato)
+3. Sugira o especialista mais adequado
+4. Pergunte: particular ou convênio? (Marcus e Vanessa aceitam alguns planos)
+5. Pergunte data e horário preferido
+6. Confirme: "✅ [Nome] | 👨‍⚕️ [Médico] | 📅 [Data/Hora] | 💰 [Valor] — confirma?"
+7. Após confirmação explícita → action:"criar_agendamento"
 
-Mensagem de confirmação após agendamento:
+Mensagem após agendamento confirmado:
 "Consulta confirmada! 🎉
 ✅ [Nome]
 👨‍⚕️ [Médico]
@@ -183,7 +194,7 @@ Mensagem de confirmação após agendamento:
 Por favor, chegue com 10 minutos de antecedência. Ficamos à disposição! 💚"
 
 ## RECEITA CONTROLADA
-"Para receitas controladas, conseguimos renovar apenas para pacientes com consulta ou retorno agendado no prazo solicitado pelo médico. ✨ Está dentro do prazo? Me informe a medicação e o médico 😊"
+"Conseguimos renovar receitas controladas apenas para pacientes com consulta ou retorno agendado no prazo indicado pelo médico. ✨ Está dentro do prazo? Me informe a medicação e o médico 😊"
 
 ## PACIENTE RECORRENTE
 Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Que saudade 😊"), use o histórico, nunca repita perguntas já respondidas.
@@ -194,7 +205,7 @@ Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Qu
 ## REGRAS ABSOLUTAS
 - NUNCA diga "não entendi" — sempre interprete e redirecione
 - NUNCA invente horários disponíveis
-- Só use action:"perdido" se paciente pedir humano explicitamente OU após 5+ mensagens sem interesse
+- Só use action:"perdido" se paciente pedir humano explicitamente OU após 5+ mensagens sem progresso
 - Sempre ofereça falar com humano se o paciente parecer insatisfeito
 
 ## RESPOSTA (sempre JSON):
@@ -225,21 +236,15 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
     const firstMsg   = (lead.first_message || "").trim();
     const isGreeting = !firstMsg || firstMsg.length < 15 ||
       /^(oi+|ol[aá]|bom dia|boa tarde|boa noite|e a[ií]|tudo bem|al[oô]u?)[\s!?.]*$/i.test(firstMsg);
-
-    if (isGreeting) {
-      await safeSend(lead.id, lead.phone, GREETING, `saudacao_${lead.id}`);
-      console.log(`Maria SAUDAÇÃO → ${lead.phone}`);
-      return;
-    }
-
-    // Primeiro contato com conteúdo real
     const fromGoogle = /google|anúncio|anuncio|propaganda|maps/i.test(firstMsg);
     const brNow      = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const dateStr    = brNow.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
     const onboardNote = `\n\n## PRIMEIRO CONTATO — ONBOARDING
 Novo paciente, primeira mensagem.${fromGoogle ? "\n- ORIGEM: veio pelo Google." : ""}
-- Apresente-se como Maria da Clínica ProNutro
-- Responda o que o paciente já informou (NÃO repita perguntas já respondidas)
+${isGreeting
+  ? "- Paciente enviou só uma saudação. Apresente-se brevemente como Maria da ProNutro, mencione as especialidades (nutrologia, emagrecimento, saúde feminina, pediatria, estética) e pergunte como pode ajudar. Mensagem curta e acolhedora."
+  : "- Responda o que o paciente já informou (NÃO repita perguntas já respondidas)"}
 - Faça apenas a próxima pergunta necessária`;
 
     const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -250,20 +255,19 @@ Novo paciente, primeira mensagem.${fromGoogle ? "\n- ORIGEM: veio pelo Google." 
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: `${MARIA_SYSTEM}${onboardNote}\n\nHoje: ${dateStr}` },
-          { role: "user", content: firstMsg },
+          { role: "user", content: firstMsg || "Oi" },
         ],
       }),
     });
 
     if (!gptRes.ok) {
-      await safeSend(lead.id, lead.phone, GREETING, `saudacao_${lead.id}`);
+      console.error("GPT error no novo lead", gptRes.status);
       return;
     }
 
     const aiData = await gptRes.json();
     let parsed: any;
     try { parsed = JSON.parse(aiData.choices[0].message.content); } catch {
-      await safeSend(lead.id, lead.phone, GREETING, `saudacao_${lead.id}`);
       return;
     }
 
@@ -329,12 +333,7 @@ Novo paciente, primeira mensagem.${fromGoogle ? "\n- ORIGEM: veio pelo Google." 
     }),
   });
   if (!res.ok) {
-    console.error(`GPT error ${res.status} para ${lead.phone} — enviando fallback`);
-    await safeSend(
-      lead.id, lead.phone,
-      "Olá! Recebi sua mensagem 😊 Nossa equipe responderá em breve. Qualquer dúvida, ligue: (61) 99954-8881",
-      `fallback_${lastIn.id}`
-    );
+    console.error(`GPT error ${res.status} para ${lead.phone} — sem fallback, equipe atende`);
     return;
   }
 
@@ -399,7 +398,7 @@ async function runPoll() {
         (m.text || m.content?.text || m.body);
     });
 
-    console.log(`pronutro-poll v20: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
+    console.log(`pronutro-poll v23: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
 
     if (!newMsgs.length) {
       await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
@@ -425,9 +424,41 @@ async function runPoll() {
 
       const inboundMsgs  = msgs.filter((m: any) => !m.fromMe);
       const outboundMsgs = msgs.filter((m: any) => m.fromMe);
-      if (!inboundMsgs.length) continue;
+      const latestTs     = Math.max(...msgs.map((m: any) => toMs(m.messageTimestamp)));
 
-      const latestTs   = Math.max(...msgs.map((m: any) => toMs(m.messageTimestamp)));
+      // ── Só mensagens da equipe (Monica, Augusto, etc.) sem resposta do paciente
+      if (!inboundMsgs.length) {
+        const { data: existLead } = await db.from("pn_leads").select("id").eq("phone", phone).maybeSingle();
+        if (!existLead || !outboundMsgs.length) continue;
+        for (const m of outboundMsgs) {
+          const body = m.text || m.content?.text || m.body || "";
+          const eid  = m.messageid || m.id;
+          if (!body || !eid) continue;
+          const humanName = m.senderName || m.pushName || "Equipe";
+          // Evita salvar mensagem que a Maria já inseriu (checa body+5min)
+          const cutoff = new Date(toMs(m.messageTimestamp) - 300_000).toISOString();
+          const { count } = await db.from("pn_mensagens")
+            .select("id", { count: "exact", head: true })
+            .eq("lead_id", existLead.id).eq("direction", "out").eq("body", body)
+            .gte("created_at", cutoff);
+          if ((count ?? 0) > 0) continue;
+          await db.from("pn_mensagens").upsert(
+            { lead_id: existLead.id, direction: "out", body, external_id: eid,
+              sender_nome: humanName,
+              created_at: new Date(toMs(m.messageTimestamp)).toISOString() },
+            { onConflict: "external_id", ignoreDuplicates: true }
+          );
+        }
+        const humanName = outboundMsgs[0]?.senderName || outboundMsgs[0]?.pushName || "Equipe";
+        await db.from("pn_leads").update({
+          last_sender_nome: humanName,
+          last_message_at: new Date(latestTs).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", existLead.id);
+        continue;
+      }
+
+      // ── Batch com mensagens do paciente ──────────────────────────────────────
       const senderName = inboundMsgs[0]?.senderName ?? inboundMsgs[0]?.pushName ?? null;
       const firstBody  = inboundMsgs[0]?.text ?? inboundMsgs[0]?.content?.text ?? inboundMsgs[0]?.body ?? "";
 
@@ -437,6 +468,7 @@ async function runPoll() {
       const upsertData: any = {
         phone,
         last_message_at: new Date(latestTs).toISOString(),
+        last_sender_nome: senderName,   // paciente falou por último
         updated_at: new Date().toISOString(),
       };
       if (senderName) upsertData.whatsapp_name = senderName;
@@ -455,14 +487,35 @@ async function runPoll() {
       }
       if (!lead) continue;
 
-      // Salva todas as mensagens
-      for (const m of msgs) {
+      // Salva mensagens inbound (do paciente)
+      for (const m of inboundMsgs) {
         const body = m.text || m.content?.text || m.body || "";
         const eid  = m.messageid || m.id;
         if (!body || !eid) continue;
         await db.from("pn_mensagens").upsert(
-          { lead_id: lead.id, direction: m.fromMe ? "out" : "in", body, external_id: eid,
-            sender_nome: m.fromMe ? "Secretaria" : null,
+          { lead_id: lead.id, direction: "in", body, external_id: eid,
+            sender_nome: null,
+            created_at: new Date(toMs(m.messageTimestamp)).toISOString() },
+          { onConflict: "external_id", ignoreDuplicates: true }
+        );
+      }
+
+      // Salva mensagens outbound da equipe (Monica etc.)
+      // — evita salvar mensagens da Maria que ela já inseriu via safeSend
+      for (const m of outboundMsgs) {
+        const body = m.text || m.content?.text || m.body || "";
+        const eid  = m.messageid || m.id;
+        if (!body || !eid) continue;
+        const humanName = m.senderName || m.pushName || "Equipe";
+        const cutoff = new Date(toMs(m.messageTimestamp) - 300_000).toISOString();
+        const { count } = await db.from("pn_mensagens")
+          .select("id", { count: "exact", head: true })
+          .eq("lead_id", lead.id).eq("direction", "out").eq("body", body)
+          .gte("created_at", cutoff);
+        if ((count ?? 0) > 0) continue; // já existe — mensagem da Maria
+        await db.from("pn_mensagens").upsert(
+          { lead_id: lead.id, direction: "out", body, external_id: eid,
+            sender_nome: humanName,
             created_at: new Date(toMs(m.messageTimestamp)).toISOString() },
           { onConflict: "external_id", ignoreDuplicates: true }
         );
