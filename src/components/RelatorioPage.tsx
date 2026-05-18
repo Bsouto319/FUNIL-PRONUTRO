@@ -298,6 +298,30 @@ export default function RelatorioPage() {
       const peakAM = horasComDemanda.filter(([h]) => Number(h) < 12).sort((a, b) => b[1].in - a[1].in)[0];
       const peakPM = horasComDemanda.filter(([h]) => Number(h) >= 12).sort((a, b) => b[1].in - a[1].in)[0];
 
+      // Gráfico por dia (Brasília UTC-3)
+      const dayMap: Record<string, { in: number; out: number }> = {};
+      for (const m of waMsgs) {
+        const brTs = new Date(new Date(m.created_at).getTime() - 3 * 3600000);
+        const key = brTs.toISOString().slice(0, 10);
+        if (!dayMap[key]) dayMap[key] = { in: 0, out: 0 };
+        if (m.direction === "in") dayMap[key].in++;
+        else dayMap[key].out++;
+      }
+      const dayEntries = Object.entries(dayMap).sort((a, b) => a[0].localeCompare(b[0]));
+      const dayPeak    = Math.max(...dayEntries.map(([, d]) => d.in), 1);
+
+      // Heatmap: DOW (0=Dom..6=Sab) × hora
+      const heatmap: Record<number, Record<number, number>> = {};
+      for (let d = 0; d < 7; d++) heatmap[d] = {};
+      for (const m of waMsgs) {
+        if (m.direction !== "in") continue;
+        const brTs = new Date(new Date(m.created_at).getTime() - 3 * 3600000);
+        const dow   = brTs.getUTCDay();
+        const h     = brTs.getUTCHours();
+        heatmap[dow][h] = (heatmap[dow][h] || 0) + 1;
+      }
+      const heatmaxVal = Math.max(...Object.values(heatmap).flatMap(row => Object.values(row)), 1);
+
       setWaStats({
         totalIn, totalOut, semResposta, pctResposta,
         mariaOut, humanOut, pctMaria,
@@ -305,6 +329,7 @@ export default function RelatorioPage() {
         leadsAtivos: leadsComMsg.size,
         leadsRespondidos: leadsComResposta.size,
         horasSemCobertura, totalGap, peakAM, peakPM,
+        dayEntries, dayPeak, heatmap, heatmaxVal,
       });
     } else {
       setWaStats(null);
@@ -427,6 +452,115 @@ export default function RelatorioPage() {
                   <p className="text-white/25 text-[10px] mt-0.5">{waStats.mariaOut} msgs · {waStats.humanOut} manual</p>
                 </div>
               </div>
+
+              {/* Dias mais movimentados */}
+              {waStats.dayEntries?.length > 0 && (
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <TrendingUp size={13} className="text-sky-400" />
+                    <span className="text-white/60 text-xs font-black uppercase tracking-wider">Dias Mais Movimentados</span>
+                    <span className="text-white/20 text-[10px] ml-auto">{periodoLabel}</span>
+                  </div>
+                  <div className="space-y-1 overflow-y-auto max-h-60 pr-1">
+                    {waStats.dayEntries.map(([date, d]: [string, { in: number; out: number }]) => {
+                      const [yr, mo, dy] = date.split("-");
+                      const dt     = new Date(`${date}T12:00:00Z`);
+                      const dow    = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][dt.getUTCDay()];
+                      const label  = `${dow} ${dy}/${mo}`;
+                      const inPct  = Math.round(d.in / waStats.dayPeak * 100);
+                      const outPct = Math.round(d.out / waStats.dayPeak * 100);
+                      const isPeak = d.in === waStats.dayPeak;
+                      return (
+                        <div key={date} className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${isPeak ? "bg-sky-500/6" : ""}`}>
+                          <span className={`text-[10px] font-mono w-16 shrink-0 ${isPeak ? "text-sky-300 font-black" : "text-white/35"}`}>{label}</span>
+                          <div className="flex-1 grid grid-cols-2 gap-1">
+                            <div className="h-4 rounded-sm bg-white/5 relative flex items-center overflow-hidden">
+                              <div className="h-full rounded-sm absolute left-0" style={{ width: `${Math.max(inPct,2)}%`, backgroundColor: "rgba(14,165,233,0.55)" }} />
+                              <span className="relative z-10 text-white text-[9px] font-black px-1.5">{d.in}</span>
+                            </div>
+                            <div className="h-4 rounded-sm bg-white/5 relative flex items-center overflow-hidden">
+                              {d.out > 0 && <div className="h-full rounded-sm absolute left-0" style={{ width: `${Math.max(outPct,2)}%`, backgroundColor: "rgba(16,185,129,0.5)" }} />}
+                              <span className="relative z-10 text-white/60 text-[9px] font-black px-1.5">{d.out}</span>
+                            </div>
+                          </div>
+                          {isPeak && <span className="text-[9px] font-black text-sky-300 shrink-0">🔥 pico</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center gap-3 pt-2 border-t border-white/8">
+                    <span className="flex items-center gap-1 text-[10px] text-sky-300/60"><span className="w-3 h-2 rounded-sm bg-sky-500/55 inline-block" /> Recebidas</span>
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-300/60"><span className="w-3 h-2 rounded-sm bg-emerald-500/50 inline-block" /> Enviadas</span>
+                    <span className="text-white/20 text-[10px] ml-auto">
+                      Pico: {waStats.dayPeak} msgs/dia
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Heatmap semana × hora */}
+              {waStats.heatmap && (
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Activity size={13} className="text-amber-400" />
+                    <span className="text-white/60 text-xs font-black uppercase tracking-wider">Heatmap — Semana × Hora</span>
+                    <span className="text-white/20 text-[10px] ml-auto">msgs recebidas</span>
+                  </div>
+                  {/* Legenda de horas no topo */}
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[480px]">
+                      <div className="flex items-center mb-1 gap-0.5 pl-8">
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <div key={h} className="flex-1 text-center text-[8px] text-white/20 font-mono">{h < 10 ? `0${h}` : h}</div>
+                        ))}
+                      </div>
+                      {[1,2,3,4,5,6,0].map(dow => {
+                        const labels = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+                        const rowLabel = labels[dow];
+                        const isWeekend = dow === 0 || dow === 6;
+                        return (
+                          <div key={dow} className="flex items-center gap-0.5 mb-0.5">
+                            <span className={`text-[9px] font-black w-8 shrink-0 text-right pr-1.5 ${isWeekend ? "text-white/25" : "text-white/40"}`}>{rowLabel}</span>
+                            {Array.from({ length: 24 }, (_, h) => {
+                              const val     = waStats.heatmap[dow]?.[h] || 0;
+                              const intense = val / waStats.heatmaxVal;
+                              const bg = intense === 0
+                                ? "rgba(255,255,255,0.04)"
+                                : intense < 0.25
+                                ? "rgba(14,165,233,0.20)"
+                                : intense < 0.5
+                                ? "rgba(14,165,233,0.40)"
+                                : intense < 0.75
+                                ? "rgba(14,165,233,0.65)"
+                                : "rgba(14,165,233,0.90)";
+                              return (
+                                <div key={h} title={`${rowLabel} ${h}h: ${val} msgs`}
+                                  className="flex-1 h-5 rounded-sm cursor-default transition-colors flex items-center justify-center"
+                                  style={{ backgroundColor: bg }}
+                                >
+                                  {val > 0 && intense >= 0.5 && (
+                                    <span className="text-white text-[7px] font-black">{val}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-white/20 text-[10px]">Intensidade:</span>
+                    {[0.15, 0.35, 0.6, 0.85].map((v, i) => (
+                      <span key={i} className="flex items-center gap-1 text-[10px] text-white/40">
+                        <span className="w-4 h-3 rounded-sm inline-block" style={{ backgroundColor: `rgba(14,165,233,${v})` }} />
+                        {i === 0 ? "baixo" : i === 1 ? "médio" : i === 2 ? "alto" : "máximo"}
+                      </span>
+                    ))}
+                    <span className="text-white/20 text-[10px] ml-auto">Pico: {waStats.heatmaxVal} msgs/slot</span>
+                  </div>
+                </div>
+              )}
 
               {/* Demanda por hora — enriquecida */}
               <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>

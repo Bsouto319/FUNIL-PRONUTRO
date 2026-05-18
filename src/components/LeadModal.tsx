@@ -32,8 +32,11 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [data, setData]           = useState("");
   const [slots, setSlots]         = useState<string[]>([]);
   const [slot, setSlot]           = useState("");
-  const [agendando, setAgendando] = useState(false);
+  const [agendando, setAgendando]   = useState(false);
   const [agendadoOk, setAgendadoOk] = useState(false);
+  const [origem, setOrigem]         = useState("");
+  const [horaManual, setHoraManual] = useState("");
+  const [agendadoErr, setAgendadoErr] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sendError, setSendError]         = useState(false);
   const [aiAnalysis, setAiAnalysis]       = useState<any>(null);
@@ -158,14 +161,24 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   useEffect(() => { loadSlots(); }, [medicoId, data]);
 
   async function handleAgendar() {
-    if (!medicoId || !data || !slot) return;
+    const horario = slot || horaManual;
+    if (!medicoId || !data || !horario) return;
     setAgendando(true);
-    const ag = await createAgendamento({ lead_id: lead.id, medico_id: medicoId, data_hora: `${data}T${slot}:00` });
+    setAgendadoErr("");
+    const obs = origem ? `Origem: ${origem}` : undefined;
+    const ag = await createAgendamento({
+      lead_id: lead.id,
+      medico_id: medicoId,
+      data_hora: `${data}T${horario}:00`,
+      observacoes: obs,
+    });
     if (ag) {
       await updateLeadStage(lead.id, "agendado");
       setStage("agendado");
       setAgendadoOk(true);
-      setTimeout(() => setAgendadoOk(false), 3000);
+      setTimeout(() => setAgendadoOk(false), 4000);
+    } else {
+      setAgendadoErr("Erro ao criar agendamento. Verifique os dados e tente novamente.");
     }
     setAgendando(false);
   }
@@ -408,12 +421,19 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
             {agendadoOk && (
               <div className="text-emerald-300 text-sm font-bold text-center bg-emerald-500/10 border border-emerald-500/30 rounded-xl py-3">
-                ✅ Consulta agendada! Lead movido para Agendado.
+                ✅ Consulta agendada! Lead movido para Agendado. Já aparece na Agenda.
               </div>
             )}
+            {agendadoErr && (
+              <div className="text-rose-300 text-xs font-bold bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3">
+                ❌ {agendadoErr}
+              </div>
+            )}
+
+            {/* Médico + Data */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-white/60 text-xs font-bold mb-1.5">Médico</label>
+                <label className="block text-white/60 text-xs font-bold mb-1.5">Médico *</label>
                 <select value={medicoId} onChange={e => setMedicoId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
                   <option value="">Selecione...</option>
@@ -421,23 +441,27 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                 </select>
               </div>
               <div>
-                <label className="block text-white/60 text-xs font-bold mb-1.5">Data</label>
+                <label className="block text-white/60 text-xs font-bold mb-1.5">Data *</label>
                 <input type="date" value={data} min={new Date().toISOString().slice(0, 10)} onChange={e => setData(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
               </div>
             </div>
+
+            {/* Info do médico */}
             {medicoSel && (
               <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-xs">
                 <p className="text-violet-300 font-bold">{medicoSel.nome}</p>
                 <p className="text-white/50">{medicoSel.especialidade} · R$ {medicoSel.valor}</p>
               </div>
             )}
+
+            {/* Slots do Google Calendar */}
             {slots.length > 0 ? (
               <div>
-                <label className="block text-white/60 text-xs font-bold mb-2">Horário disponível</label>
+                <label className="block text-white/60 text-xs font-bold mb-2">Horário disponível (Google Calendar)</label>
                 <div className="grid grid-cols-5 gap-2">
                   {slots.map(s => (
-                    <button key={s} onClick={() => setSlot(s)}
+                    <button key={s} onClick={() => { setSlot(s); setHoraManual(""); }}
                       className={`py-2 rounded-lg text-xs font-bold border transition ${slot === s ? "bg-emerald-600 text-white border-emerald-500" : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"}`}>
                       {s}
                     </button>
@@ -445,12 +469,35 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                 </div>
               </div>
             ) : (medicoId && data) ? (
-              <p className="text-white/30 text-xs text-center py-4">Nenhum horário disponível nesta data</p>
+              <div>
+                <label className="block text-white/60 text-xs font-bold mb-1.5">Horário manual *</label>
+                <p className="text-white/25 text-[10px] mb-2">Nenhum slot carregado do Google Calendar — informe o horário manualmente.</p>
+                <input type="time" value={horaManual} onChange={e => { setHoraManual(e.target.value); setSlot(""); }}
+                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+              </div>
             ) : null}
-            {slot && medicoId && data && (
+
+            {/* Por onde veio */}
+            <div>
+              <label className="block text-white/60 text-xs font-bold mb-1.5">Por onde veio</label>
+              <div className="grid grid-cols-3 gap-2">
+                {["WhatsApp", "Google", "Instagram", "Facebook", "Indicação", "Doctoralia", "TikTok", "Outro"].map(op => (
+                  <button key={op} onClick={() => setOrigem(origem === op ? "" : op)}
+                    className={`py-2 px-3 rounded-lg text-[11px] font-bold border transition text-left ${origem === op ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                    {op === "WhatsApp" ? "📱 " : op === "Google" ? "🔍 " : op === "Instagram" ? "📸 " : op === "Facebook" ? "👥 " : op === "Indicação" ? "🤝 " : op === "Doctoralia" ? "🏥 " : op === "TikTok" ? "🎵 " : "❓ "}
+                    {op}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Botão confirmar */}
+            {(slot || horaManual) && medicoId && data && (
               <button onClick={handleAgendar} disabled={agendando}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition disabled:opacity-50">
-                {agendando ? "Agendando..." : `Confirmar — ${data.split("-").reverse().join("/")} às ${slot}`}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition disabled:opacity-50 shadow-lg shadow-emerald-500/20">
+                {agendando
+                  ? "⏳ Agendando..."
+                  : `✅ Confirmar Agendamento — ${data.split("-").reverse().join("/")} às ${slot || horaManual}${origem ? ` · ${origem}` : ""}`}
               </button>
             )}
           </div>
