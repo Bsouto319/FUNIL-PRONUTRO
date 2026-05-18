@@ -48,6 +48,17 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [perfNome,      setPerfNome]      = useState(lead.name || "");
   const [perfEmail,     setPerfEmail]     = useState(lead.email || "");
   const [perfOrigem,    setPerfOrigem]    = useState(lead.origem || "");
+  const [perfCpf,       setPerfCpf]       = useState(lead.cpf ? lead.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "");
+  const [perfNasc,      setPerfNasc]      = useState(lead.data_nascimento || "");
+  const [perfSexo,      setPerfSexo]      = useState(lead.sexo || "");
+  const [perfConvenio,  setPerfConvenio]  = useState(lead.convenio || "");
+  const [perfCep,       setPerfCep]       = useState(lead.cep ? lead.cep.replace(/(\d{5})(\d{3})/, "$1-$2") : "");
+  const [perfEndereco,  setPerfEndereco]  = useState(lead.endereco || "");
+  const [perfNumero,    setPerfNumero]    = useState(lead.numero || "");
+  const [perfCompl,     setPerfCompl]     = useState(lead.complemento || "");
+  const [perfBairro,    setPerfBairro]    = useState(lead.bairro || "");
+  const [perfCidade,    setPerfCidade]    = useState(lead.cidade || "");
+  const [perfEstado,    setPerfEstado]    = useState(lead.estado || "");
   const [perfPagStatus, setPerfPagStatus] = useState(lead.pagamento_status || "pendente");
   const [perfPagValor,  setPerfPagValor]  = useState(lead.pagamento_valor != null ? String(lead.pagamento_valor) : "");
   const [perfPagMetodo, setPerfPagMetodo] = useState(lead.pagamento_metodo || "");
@@ -242,7 +253,18 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     const ok = await updateLeadProfile(lead.id, {
       name:              perfNome || undefined,
       email:             perfEmail || undefined,
+      cpf:               perfCpf.replace(/\D/g, "") || undefined,
+      data_nascimento:   perfNasc || undefined,
+      sexo:              perfSexo || undefined,
       origem:            perfOrigem || undefined,
+      convenio:          perfConvenio || undefined,
+      endereco:          perfEndereco || undefined,
+      numero:            perfNumero || undefined,
+      complemento:       perfCompl || undefined,
+      bairro:            perfBairro || undefined,
+      cidade:            perfCidade || undefined,
+      estado:            perfEstado || undefined,
+      cep:               perfCep.replace(/\D/g, "") || undefined,
       pagamento_status:  perfPagStatus || undefined,
       pagamento_valor:   perfPagValor ? parseFloat(perfPagValor.replace(",", ".")) : null,
       pagamento_metodo:  perfPagMetodo || undefined,
@@ -568,7 +590,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
             <div className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)" }}>
               <p className="text-white/60 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
                 <UserCircle size={11} />
-                Dados do Paciente
+                Identificação
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -581,21 +603,113 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                   <input value={lead.phone} readOnly
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white/40 text-xs font-mono cursor-not-allowed" />
                 </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">CPF</label>
+                  <input value={perfCpf}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 11);
+                      const fmt = v.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, (_, a, b, c, d) => d ? `${a}.${b}.${c}-${d}` : c ? `${a}.${b}.${c}` : b ? `${a}.${b}` : a);
+                      setPerfCpf(fmt);
+                    }}
+                    placeholder="000.000.000-00" maxLength={14}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data de Nascimento</label>
+                  <input type="date" value={perfNasc} onChange={e => setPerfNasc(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">E-mail</label>
+                  <input type="email" value={perfEmail} onChange={e => setPerfEmail(e.target.value)} placeholder="paciente@email.com"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Convênio</label>
+                  <input value={perfConvenio} onChange={e => setPerfConvenio(e.target.value)} placeholder="Unimed, Particular..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
               </div>
               <div>
-                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">E-mail</label>
-                <input type="email" value={perfEmail} onChange={e => setPerfEmail(e.target.value)} placeholder="paciente@email.com"
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Sexo</label>
+                <div className="flex gap-2">
+                  {[["M","Masculino"],["F","Feminino"],["O","Outro"]].map(([v,l]) => (
+                    <button key={v} type="button" onClick={() => setPerfSexo(perfSexo === v ? "" : v)}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition ${perfSexo === v ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Por onde veio</label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {["WhatsApp", "Google", "Instagram", "Facebook", "Indicação", "Doctoralia", "TikTok", "Outro"].map(op => (
-                    <button key={op} onClick={() => setPerfOrigem(perfOrigem === op ? "" : op)}
+                    <button key={op} type="button" onClick={() => setPerfOrigem(perfOrigem === op ? "" : op)}
                       className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${perfOrigem === op ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
                       {op === "WhatsApp" ? "📱" : op === "Google" ? "🔍" : op === "Instagram" ? "📸" : op === "Facebook" ? "👥" : op === "Indicação" ? "🤝" : op === "Doctoralia" ? "🏥" : op === "TikTok" ? "🎵" : "❓"} {op}
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Endereço */}
+            <div className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <p className="text-white/60 text-[10px] font-black uppercase tracking-wider">📍 Endereço</p>
+              <div className="grid grid-cols-6 gap-2">
+                <div className="col-span-2">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">CEP</label>
+                  <input value={perfCep}
+                    onChange={async e => {
+                      const raw = e.target.value.replace(/\D/g, "").slice(0, 8);
+                      const fmt = raw.length > 5 ? `${raw.slice(0,5)}-${raw.slice(5)}` : raw;
+                      setPerfCep(fmt);
+                      if (raw.length === 8) {
+                        try {
+                          const r = await fetch(`https://viacep.com.br/ws/${raw}/json/`);
+                          const d = await r.json();
+                          if (!d.erro) { setPerfEndereco(d.logradouro || ""); setPerfBairro(d.bairro || ""); setPerfCidade(d.localidade || ""); setPerfEstado(d.uf || ""); }
+                        } catch {}
+                      }
+                    }}
+                    placeholder="00000-000" maxLength={9}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-4">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Logradouro</label>
+                  <input value={perfEndereco} onChange={e => setPerfEndereco(e.target.value)} placeholder="Rua, Av..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-1">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nº</label>
+                  <input value={perfNumero} onChange={e => setPerfNumero(e.target.value)} placeholder="123"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Complemento</label>
+                  <input value={perfCompl} onChange={e => setPerfCompl(e.target.value)} placeholder="Apto..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-3">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Bairro</label>
+                  <input value={perfBairro} onChange={e => setPerfBairro(e.target.value)} placeholder="Asa Norte..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-4">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Cidade</label>
+                  <input value={perfCidade} onChange={e => setPerfCidade(e.target.value)} placeholder="Brasília"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Estado</label>
+                  <select value={perfEstado} onChange={e => setPerfEstado(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40">
+                    <option value="">UF</option>
+                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>

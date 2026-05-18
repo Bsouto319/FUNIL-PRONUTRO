@@ -90,7 +90,18 @@ export async function updateLeadNotes(id: string, notes: string) {
 export async function updateLeadProfile(id: string, data: {
   name?: string;
   email?: string;
+  cpf?: string;
+  data_nascimento?: string;
+  sexo?: string;
   origem?: string;
+  convenio?: string;
+  endereco?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
   pagamento_status?: string;
   pagamento_valor?: number | null;
   pagamento_metodo?: string;
@@ -170,16 +181,46 @@ export async function desativarMedico(id: string): Promise<boolean> {
 }
 
 export async function createLead(data: {
-  name: string; phone: string; stage?: string; ai_mode?: boolean; first_message?: string;
+  name: string;
+  phone: string;
+  stage?: string;
+  ai_mode?: boolean;
+  first_message?: string;
+  email?: string;
+  cpf?: string;
+  data_nascimento?: string;
+  sexo?: string;
+  origem?: string;
+  endereco?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  convenio?: string;
 }): Promise<boolean> {
   const { error } = await supabase.from("pn_leads").insert({
-    name: data.name,
-    phone: data.phone.replace(/\D/g, ""),
-    stage: data.stage || "novo_lead",
-    ai_mode: data.ai_mode ?? false,
-    first_message: data.first_message || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    name:            data.name,
+    phone:           data.phone.replace(/\D/g, ""),
+    stage:           data.stage || "novo_lead",
+    ai_mode:         data.ai_mode ?? false,
+    first_message:   data.first_message || null,
+    email:           data.email || null,
+    cpf:             data.cpf ? data.cpf.replace(/\D/g, "") : null,
+    data_nascimento: data.data_nascimento || null,
+    sexo:            data.sexo || null,
+    origem:          data.origem || null,
+    endereco:        data.endereco || null,
+    numero:          data.numero || null,
+    complemento:     data.complemento || null,
+    bairro:          data.bairro || null,
+    cidade:          data.cidade || null,
+    estado:          data.estado || null,
+    cep:             data.cep ? data.cep.replace(/\D/g, "") : null,
+    convenio:        data.convenio || null,
+    created_at:      new Date().toISOString(),
+    updated_at:      new Date().toISOString(),
   });
   return !error;
 }

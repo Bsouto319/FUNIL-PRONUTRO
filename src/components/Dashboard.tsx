@@ -23,7 +23,13 @@ export default function Dashboard({ user }: { user: any }) {
   const [mariaLoading, setMariaLoading] = useState(false);
   const [page, setPage]           = useState<Page>("kanban");
   const [showNewLead, setShowNewLead] = useState(false);
-  const [newLeadForm, setNewLeadForm] = useState({ name: "", phone: "", stage: "novo_lead", ai_mode: false, first_message: "" });
+  const [newLeadForm, setNewLeadForm] = useState({
+    name: "", phone: "", email: "", cpf: "", data_nascimento: "", sexo: "",
+    stage: "novo_lead", ai_mode: false, first_message: "",
+    origem: "",
+    cep: "", endereco: "", numero: "", complemento: "", bairro: "", cidade: "", estado: "",
+    convenio: "",
+  });
   const [savingLead, setSavingLead]   = useState(false);
   const [newLeadMsg, setNewLeadMsg]   = useState("");
   const [briefing, setBriefing]       = useState<any>(null);
@@ -33,7 +39,7 @@ export default function Dashboard({ user }: { user: any }) {
   const [filterHoje, setFilterHoje]       = useState(false);
   const [organizeModal, setOrganizeModal] = useState<{
     open: boolean; total: number; current: number; done: boolean;
-    results: { name: string; from: string; to: string }[];
+    results: { name: string; from: string; to: string; changed: boolean; motivo?: string }[];
   } | null>(null);
   const [notifications, setNotifications]   = useState<any[]>([]);
   const [toasts, setToasts]                 = useState<any[]>([]);
@@ -197,18 +203,19 @@ export default function Dashboard({ user }: { user: any }) {
             body: JSON.stringify({ lead_id: l.id }),
           });
           const data = await res.json();
-          if (data.changed) {
-            return {
-              name: l.name || l.whatsapp_name || `+${l.phone}`,
-              from: l.stage,
-              to: data.new_stage || "?",
-            };
-          }
-        } catch {}
-        return null;
+          return {
+            name:    l.name || l.whatsapp_name || `+${l.phone}`,
+            from:    l.stage,
+            to:      data.new_stage || l.stage,
+            changed: !!data.changed,
+            motivo:  data.motivo || "",
+          };
+        } catch {
+          return null;
+        }
       }));
 
-      const valid = batchResults.filter(Boolean) as { name: string; from: string; to: string }[];
+      const valid = batchResults.filter(Boolean) as { name: string; from: string; to: string; changed: boolean; motivo?: string }[];
       setOrganizeModal(prev => prev ? {
         ...prev,
         current: Math.min(prev.current + batch.length, prev.total),
@@ -245,7 +252,13 @@ export default function Dashboard({ user }: { user: any }) {
     setSavingLead(false);
     if (ok) {
       setNewLeadMsg("✅ Paciente criado!");
-      setNewLeadForm({ name: "", phone: "", stage: "novo_lead", ai_mode: false, first_message: "" });
+      setNewLeadForm({
+        name: "", phone: "", email: "", cpf: "", data_nascimento: "", sexo: "",
+        stage: "novo_lead", ai_mode: false, first_message: "",
+        origem: "",
+        cep: "", endereco: "", numero: "", complemento: "", bairro: "", cidade: "", estado: "",
+        convenio: "",
+      });
       load();
       setTimeout(() => { setShowNewLead(false); setNewLeadMsg(""); }, 1200);
     } else {
@@ -572,53 +585,221 @@ export default function Dashboard({ user }: { user: any }) {
 
       {/* Modal: novo paciente */}
       {showNewLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
-          <div className="w-full max-w-md rounded-2xl border border-white/10 shadow-2xl" style={{ background: "rgba(10,20,55,0.97)" }}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-              <p className="text-white font-black text-base">Novo Paciente</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}>
+          <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl border border-white/10 shadow-2xl overflow-hidden" style={{ background: "rgba(10,20,55,0.98)" }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center">
+                  <UserPlus size={15} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-base leading-none">Novo Paciente</p>
+                  <p className="text-white/35 text-[10px] font-bold mt-0.5">Preencha os dados do cadastro</p>
+                </div>
+              </div>
               <button onClick={() => { setShowNewLead(false); setNewLeadMsg(""); }} className="p-1.5 rounded-lg hover:bg-white/10 transition">
                 <X size={16} className="text-white/50" />
               </button>
             </div>
-            <form onSubmit={handleCreateLead} className="p-5 space-y-3">
-              <div>
-                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome completo</label>
-                <input required value={newLeadForm.name} onChange={e => setNewLeadForm(p => ({ ...p, name: e.target.value }))}
-                  placeholder="Maria Silva"
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
-              </div>
-              <div>
-                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Telefone (WhatsApp)</label>
-                <input required value={newLeadForm.phone} onChange={e => setNewLeadForm(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="5561999998888"
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
-                <p className="text-white/25 text-[10px] mt-0.5">Formato: 55 + DDD + número (ex: 5561999998888)</p>
-              </div>
-              <div>
-                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Stage inicial</label>
-                <select value={newLeadForm.stage} onChange={e => setNewLeadForm(p => ({ ...p, stage: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
-                  {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Observação inicial (opcional)</label>
-                <textarea value={newLeadForm.first_message} onChange={e => setNewLeadForm(p => ({ ...p, first_message: e.target.value }))}
-                  placeholder="Ex: Indicado pela Dra. Vanessa, quer consulta de retorno"
-                  rows={2}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="ai_mode_new" checked={newLeadForm.ai_mode} onChange={e => setNewLeadForm(p => ({ ...p, ai_mode: e.target.checked }))}
-                  className="w-4 h-4 rounded accent-violet-500" />
-                <label htmlFor="ai_mode_new" className="text-white/60 text-xs">Ativar Maria IA para este paciente</label>
-              </div>
-              {newLeadMsg && <p className={`text-xs font-bold ${newLeadMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{newLeadMsg}</p>}
-              <button type="submit" disabled={savingLead}
-                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50">
-                {savingLead ? "Criando..." : "Criar Paciente"}
-              </button>
+
+            {/* Form scrollável */}
+            <form id="new-lead-form" onSubmit={handleCreateLead} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* ── Identificação ── */}
+              <section>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="w-4 h-px bg-white/20" />Identificação<span className="flex-1 h-px bg-white/10" />
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome completo *</label>
+                    <input required value={newLeadForm.name} onChange={e => setNewLeadForm(p => ({ ...p, name: e.target.value }))}
+                      placeholder="Maria da Silva Santos"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">CPF</label>
+                    <input value={newLeadForm.cpf}
+                      onChange={e => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 11);
+                        const fmt = v.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, (_, a, b, c, d) => d ? `${a}.${b}.${c}-${d}` : c ? `${a}.${b}.${c}` : b ? `${a}.${b}` : a);
+                        setNewLeadForm(p => ({ ...p, cpf: fmt }));
+                      }}
+                      placeholder="000.000.000-00" maxLength={14}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Data de Nascimento</label>
+                    <input type="date" value={newLeadForm.data_nascimento} onChange={e => setNewLeadForm(p => ({ ...p, data_nascimento: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1.5 uppercase">Sexo</label>
+                    <div className="flex gap-2">
+                      {[["M", "Masculino"], ["F", "Feminino"], ["O", "Outro"]].map(([v, l]) => (
+                        <button key={v} type="button" onClick={() => setNewLeadForm(p => ({ ...p, sexo: p.sexo === v ? "" : v }))}
+                          className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${newLeadForm.sexo === v ? "bg-emerald-600 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Contato ── */}
+              <section>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="w-4 h-px bg-white/20" />Contato<span className="flex-1 h-px bg-white/10" />
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">WhatsApp *</label>
+                    <input required value={newLeadForm.phone} onChange={e => setNewLeadForm(p => ({ ...p, phone: e.target.value }))}
+                      placeholder="5561999998888"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                    <p className="text-white/25 text-[10px] mt-0.5">55 + DDD + número</p>
+                  </div>
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">E-mail</label>
+                    <input type="email" value={newLeadForm.email} onChange={e => setNewLeadForm(p => ({ ...p, email: e.target.value }))}
+                      placeholder="paciente@email.com"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Convênio</label>
+                    <input value={newLeadForm.convenio} onChange={e => setNewLeadForm(p => ({ ...p, convenio: e.target.value }))}
+                      placeholder="Unimed, Amil, Particular..."
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1.5 uppercase">Por onde veio</label>
+                    <select value={newLeadForm.origem} onChange={e => setNewLeadForm(p => ({ ...p, origem: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                      <option value="">Selecionar...</option>
+                      {["WhatsApp", "Google", "Instagram", "Facebook", "Indicação", "Doctoralia", "TikTok", "Outro"].map(o => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Endereço ── */}
+              <section>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="w-4 h-px bg-white/20" />Endereço<span className="flex-1 h-px bg-white/10" />
+                </p>
+                <div className="grid grid-cols-6 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">CEP</label>
+                    <input value={newLeadForm.cep}
+                      onChange={async e => {
+                        const raw = e.target.value.replace(/\D/g, "").slice(0, 8);
+                        const fmt = raw.length > 5 ? `${raw.slice(0,5)}-${raw.slice(5)}` : raw;
+                        setNewLeadForm(p => ({ ...p, cep: fmt }));
+                        if (raw.length === 8) {
+                          try {
+                            const r = await fetch(`https://viacep.com.br/ws/${raw}/json/`);
+                            const d = await r.json();
+                            if (!d.erro) setNewLeadForm(p => ({ ...p, cep: fmt, endereco: d.logradouro || p.endereco, bairro: d.bairro || p.bairro, cidade: d.localidade || p.cidade, estado: d.uf || p.estado }));
+                          } catch {}
+                        }
+                      }}
+                      placeholder="00000-000" maxLength={9}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-4">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Logradouro</label>
+                    <input value={newLeadForm.endereco} onChange={e => setNewLeadForm(p => ({ ...p, endereco: e.target.value }))}
+                      placeholder="Rua, Av., Quadra..."
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nº</label>
+                    <input value={newLeadForm.numero} onChange={e => setNewLeadForm(p => ({ ...p, numero: e.target.value }))}
+                      placeholder="123"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Complemento</label>
+                    <input value={newLeadForm.complemento} onChange={e => setNewLeadForm(p => ({ ...p, complemento: e.target.value }))}
+                      placeholder="Apto, Sala..."
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Bairro</label>
+                    <input value={newLeadForm.bairro} onChange={e => setNewLeadForm(p => ({ ...p, bairro: e.target.value }))}
+                      placeholder="Asa Norte..."
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-4">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Cidade</label>
+                    <input value={newLeadForm.cidade} onChange={e => setNewLeadForm(p => ({ ...p, cidade: e.target.value }))}
+                      placeholder="Brasília"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Estado</label>
+                    <select value={newLeadForm.estado} onChange={e => setNewLeadForm(p => ({ ...p, estado: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                      <option value="">UF</option>
+                      {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                        <option key={uf} value={uf}>{uf}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── CRM ── */}
+              <section>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="w-4 h-px bg-white/20" />CRM<span className="flex-1 h-px bg-white/10" />
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Stage inicial</label>
+                    <select value={newLeadForm.stage} onChange={e => setNewLeadForm(p => ({ ...p, stage: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                      {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end pb-0.5">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" id="ai_mode_new" checked={newLeadForm.ai_mode} onChange={e => setNewLeadForm(p => ({ ...p, ai_mode: e.target.checked }))}
+                        className="w-4 h-4 rounded accent-violet-500" />
+                      <span className="text-white/60 text-xs">Ativar Maria IA</span>
+                    </label>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Observação inicial</label>
+                    <textarea value={newLeadForm.first_message} onChange={e => setNewLeadForm(p => ({ ...p, first_message: e.target.value }))}
+                      placeholder="Ex: Indicado pela Dra. Vanessa, quer consulta de retorno"
+                      rows={2}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                  </div>
+                </div>
+              </section>
+
+              {newLeadMsg && (
+                <p className={`text-xs font-bold ${newLeadMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{newLeadMsg}</p>
+              )}
             </form>
+
+            {/* Footer fixo */}
+            <div className="px-6 py-4 border-t border-white/10 flex-shrink-0 flex gap-3">
+              <button type="button" onClick={() => { setShowNewLead(false); setNewLeadMsg(""); }}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 font-black text-sm transition border border-white/10">
+                Cancelar
+              </button>
+              <button type="submit" form="new-lead-form" disabled={savingLead}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                {savingLead ? "Criando..." : "✅ Criar Paciente"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -678,8 +859,8 @@ export default function Dashboard({ user }: { user: any }) {
                 <p className="text-white font-black text-sm">🎯 Organizando Kanban com IA</p>
                 <p className="text-white/40 text-[10px] font-bold mt-0.5">
                   {organizeModal.done
-                    ? `Concluído — ${organizeModal.results.length} lead${organizeModal.results.length !== 1 ? "s" : ""} movido${organizeModal.results.length !== 1 ? "s" : ""}`
-                    : `Analisando ${organizeModal.current} de ${organizeModal.total} leads...`}
+                    ? `${organizeModal.results.length} leads analisados · ${organizeModal.results.filter(r => r.changed).length} movidos pela IA`
+                    : `Lendo conversas... ${organizeModal.current} de ${organizeModal.total}`}
                 </p>
               </div>
             </div>
@@ -700,13 +881,29 @@ export default function Dashboard({ user }: { user: any }) {
               </p>
             </div>
 
+            {/* Summary badges */}
+            {organizeModal.results.length > 0 && (
+              <div className="px-5 pt-1 flex items-center gap-3">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                  {organizeModal.results.length} analisados
+                </span>
+                {organizeModal.results.filter(r => r.changed).length > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {organizeModal.results.filter(r => r.changed).length} movidos
+                  </span>
+                )}
+                {organizeModal.results.filter(r => !r.changed).length > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white/10 text-white/40 border border-white/10">
+                    {organizeModal.results.filter(r => !r.changed).length} mantidos
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Results list */}
-            <div className="px-5 pb-2 max-h-60 overflow-y-auto mt-2 space-y-1.5">
+            <div className="px-5 pb-2 max-h-64 overflow-y-auto mt-2 space-y-1.5">
               {organizeModal.results.length === 0 && !organizeModal.done && (
-                <p className="text-white/25 text-xs text-center py-4">Analisando conversas...</p>
-              )}
-              {organizeModal.results.length === 0 && organizeModal.done && (
-                <p className="text-white/40 text-xs text-center py-4">Nenhum lead precisava ser movido.</p>
+                <p className="text-white/25 text-xs text-center py-4">Analisando conversas com IA...</p>
               )}
               {organizeModal.results.map((r, i) => {
                 const stageLabel: Record<string, string> = {
@@ -714,14 +911,33 @@ export default function Dashboard({ user }: { user: any }) {
                   agendado: "Agendado", resolvido: "Resolvido", perdido: "Perdido",
                 };
                 return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-500/10 border border-violet-500/20">
-                    <span className="text-violet-300 text-xs font-black shrink-0">✓</span>
-                    <span className="text-white text-xs font-bold truncate flex-1">{r.name}</span>
-                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold">
-                      <span className="text-white/35">{stageLabel[r.from] || r.from}</span>
-                      <span className="text-violet-400">→</span>
-                      <span className="text-violet-300">{stageLabel[r.to] || r.to}</span>
+                  <div key={i} className={`px-3 py-2 rounded-xl border ${
+                    r.changed
+                      ? "bg-violet-500/12 border-violet-500/30"
+                      : "bg-white/3 border-white/8"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-black shrink-0 ${r.changed ? "text-violet-300" : "text-white/25"}`}>
+                        {r.changed ? "→" : "·"}
+                      </span>
+                      <span className={`text-xs font-bold truncate flex-1 ${r.changed ? "text-white" : "text-white/50"}`}>{r.name}</span>
+                      <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold">
+                        {r.changed ? (
+                          <>
+                            <span className="text-white/35">{stageLabel[r.from] || r.from}</span>
+                            <span className="text-violet-400">→</span>
+                            <span className="text-violet-300">{stageLabel[r.to] || r.to}</span>
+                          </>
+                        ) : (
+                          <span className="text-white/25">{stageLabel[r.from] || r.from}</span>
+                        )}
+                      </div>
                     </div>
+                    {r.motivo && (
+                      <p className={`text-[10px] mt-0.5 ml-4 leading-relaxed ${r.changed ? "text-violet-300/70" : "text-white/25"}`}>
+                        {r.motivo}
+                      </p>
+                    )}
                   </div>
                 );
               })}
