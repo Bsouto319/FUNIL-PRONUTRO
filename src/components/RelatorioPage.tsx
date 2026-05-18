@@ -182,7 +182,6 @@ export default function RelatorioPage() {
         .eq("direction", "in")
         .gte("created_at", from).lte("created_at", to)
         .limit(600),
-      // Todas as mensagens do período para métricas de WhatsApp
       supabase.from("pn_mensagens")
         .select("direction, sender_nome, created_at, lead_id")
         .gte("created_at", from).lte("created_at", to)
@@ -242,15 +241,12 @@ export default function RelatorioPage() {
       formaMap[k] = (formaMap[k] || 0) + (f.valor || 0);
     }
 
-    // Top tipos de consulta (o que mais agendaram)
+    // Top tipos de consulta
     const tipoMap: Record<string, { count: number; receita: number }> = {};
     for (const ag of ags) {
       const tipo = ag.tipo_consulta || "Consulta geral";
       if (!tipoMap[tipo]) tipoMap[tipo] = { count: 0, receita: 0 };
       tipoMap[tipo].count++;
-    }
-    for (const f of fins) {
-      // Tenta associar receita ao tipo pela posição nos agendamentos (melhor esforço)
     }
     const topConsultas = Object.entries(tipoMap)
       .map(([tipo, v]) => ({ tipo, ...v }))
@@ -264,12 +260,11 @@ export default function RelatorioPage() {
     // ── WhatsApp operacional ───────────────────────────────────────────────
     const waMsgs = waMsgRes.data || [];
     if (waMsgs.length > 0) {
-      // Horas em horário de Brasília (UTC-3)
       const hourMap: Record<number, { in: number; out: number }> = {};
       for (let h = 0; h < 24; h++) hourMap[h] = { in: 0, out: 0 };
       const senderMap: Record<string, number> = {};
       let totalIn = 0, totalOut = 0;
-      const leadsComMsg     = new Set<string>();
+      const leadsComMsg      = new Set<string>();
       const leadsComResposta = new Set<string>();
 
       for (const m of waMsgs) {
@@ -296,12 +291,20 @@ export default function RelatorioPage() {
       const peakIn       = Math.max(...Object.values(hourMap).map(h => h.in), 1);
       const peakHour     = Object.entries(hourMap).sort((a, b) => b[1].in - a[1].in)[0];
 
+      // Resumo horário
+      const horasComDemanda   = Object.entries(hourMap).filter(([, d]) => d.in > 0);
+      const horasSemCobertura = horasComDemanda.filter(([, d]) => d.out === 0).length;
+      const totalGap          = horasComDemanda.reduce((s, [, d]) => s + Math.max(d.in - d.out, 0), 0);
+      const peakAM = horasComDemanda.filter(([h]) => Number(h) < 12).sort((a, b) => b[1].in - a[1].in)[0];
+      const peakPM = horasComDemanda.filter(([h]) => Number(h) >= 12).sort((a, b) => b[1].in - a[1].in)[0];
+
       setWaStats({
         totalIn, totalOut, semResposta, pctResposta,
         mariaOut, humanOut, pctMaria,
         senderMap, hourMap, peakIn, peakHour,
         leadsAtivos: leadsComMsg.size,
         leadsRespondidos: leadsComResposta.size,
+        horasSemCobertura, totalGap, peakAM, peakPM,
       });
     } else {
       setWaStats(null);
@@ -377,6 +380,244 @@ export default function RelatorioPage() {
         </div>
       ) : stats ? (
         <>
+          {/* WhatsApp — Demanda Operacional ────────────────────────────── */}
+          {waStats && (
+            <div className="space-y-4">
+
+              {/* Título da seção */}
+              <div className="flex items-center gap-2 pt-2">
+                <PhoneCall size={14} className="text-emerald-400" />
+                <span className="text-white font-black text-sm uppercase tracking-widest">WhatsApp — Demanda Operacional</span>
+                <div className="flex-1 h-px bg-white/8 ml-2" />
+                <span className="text-white/20 text-[10px]">{periodoLabel}</span>
+              </div>
+
+              {/* KPIs WhatsApp */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center mb-3 shadow-lg">
+                    <MessageSquare size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.totalIn}</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Msgs Recebidas</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.totalOut} respondidas</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-3 shadow-lg">
+                    <CheckCircle size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.pctResposta}%</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Leads Respondidos</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.leadsRespondidos} de {waStats.leadsAtivos}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 shadow-lg ${waStats.semResposta > 10 ? "from-rose-500 to-red-600" : "from-amber-500 to-orange-500"}`}>
+                    <XCircle size={15} className="text-white" />
+                  </div>
+                  <p className={`font-black text-2xl leading-none ${waStats.semResposta > 10 ? "text-rose-400" : "text-amber-400"}`}>{waStats.semResposta}</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Sem Retorno</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">leads sem nenhuma resposta</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-3 shadow-lg">
+                    <Bot size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.pctMaria}%</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Maria IA</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.mariaOut} msgs · {waStats.humanOut} manual</p>
+                </div>
+              </div>
+
+              {/* Demanda por hora — enriquecida */}
+              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock size={13} className="text-sky-400" />
+                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Demanda por Horário</span>
+                  <span className="text-white/20 text-[10px] ml-auto">Horário de Brasília</span>
+                </div>
+
+                {/* Legenda */}
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <span className="flex items-center gap-1 text-[10px] text-sky-300/70"><span className="w-3 h-2 rounded-sm bg-sky-500/60 inline-block" /> Pacientes</span>
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-300/70"><span className="w-3 h-2 rounded-sm bg-emerald-500/60 inline-block" /> Equipe</span>
+                  <span className="flex items-center gap-1 text-[10px] text-rose-300/60"><span className="w-3 h-2 rounded-sm bg-rose-500/30 inline-block" /> Sem cobertura</span>
+                  <span className="flex items-center gap-1 text-[10px] text-amber-300/60"><span className="w-3 h-2 rounded-sm bg-amber-500/30 inline-block" /> Gap parcial</span>
+                </div>
+
+                {/* Tabela de horas */}
+                <div className="space-y-1 overflow-y-auto max-h-[480px] pr-1">
+                  {/* Cabeçalho colunas */}
+                  <div className="flex items-center gap-2 mb-2 pb-1 border-b border-white/6">
+                    <span className="text-white/20 text-[9px] font-black w-6 shrink-0">H</span>
+                    <div className="flex-1 grid grid-cols-2 gap-1">
+                      <span className="text-white/20 text-[9px] font-black">Pacientes</span>
+                      <span className="text-white/20 text-[9px] font-black">Equipe</span>
+                    </div>
+                    <span className="text-white/20 text-[9px] font-black w-28 text-right shrink-0">Detalhes</span>
+                  </div>
+
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const d = waStats.hourMap[h];
+                    if (!d || (d.in === 0 && d.out === 0)) return null;
+                    const inPct        = Math.round(d.in  / waStats.peakIn * 100);
+                    const outPct       = Math.round(d.out / waStats.peakIn * 100);
+                    const semCobertura = d.in > 0 && d.out === 0;
+                    const gapParcial   = d.in > 0 && d.out > 0 && d.out < d.in * 0.5;
+                    const gap          = Math.max(d.in - d.out, 0);
+                    const hora         = `${String(h).padStart(2, "0")}h`;
+                    const rowBg        = semCobertura
+                      ? "rgba(239,68,68,0.05)"
+                      : gapParcial
+                      ? "rgba(245,158,11,0.04)"
+                      : "transparent";
+
+                    return (
+                      <div key={h} className="flex items-center gap-2 rounded-lg px-1 py-0.5 transition-colors" style={{ background: rowBg }}>
+                        <span className="text-white/40 text-[10px] font-mono font-black w-6 shrink-0">{hora}</span>
+
+                        <div className="flex-1 grid grid-cols-2 gap-1">
+                          {/* Barra pacientes */}
+                          <div className="h-4 rounded-sm overflow-hidden bg-white/5 relative flex items-center">
+                            <div
+                              className="h-full rounded-sm transition-all duration-700 absolute left-0 top-0"
+                              style={{
+                                width: `${Math.max(inPct, 3)}%`,
+                                backgroundColor: semCobertura ? "rgba(239,68,68,0.55)" : "rgba(14,165,233,0.55)",
+                              }}
+                            />
+                            <span className="relative z-10 text-white text-[9px] font-black px-1.5 drop-shadow-sm">{d.in}</span>
+                          </div>
+                          {/* Barra equipe */}
+                          <div className="h-4 rounded-sm overflow-hidden bg-white/5 relative flex items-center">
+                            {d.out > 0 && (
+                              <div
+                                className="h-full rounded-sm transition-all duration-700 absolute left-0 top-0"
+                                style={{ width: `${Math.max(outPct, 3)}%`, backgroundColor: "rgba(16,185,129,0.55)" }}
+                              />
+                            )}
+                            <span className="relative z-10 text-white text-[9px] font-black px-1.5 drop-shadow-sm">{d.out}</span>
+                          </div>
+                        </div>
+
+                        {/* Coluna de detalhe */}
+                        <div className="w-28 flex items-center justify-end gap-1 shrink-0">
+                          {semCobertura && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                              🚫 sem cob.
+                            </span>
+                          )}
+                          {gapParcial && !semCobertura && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 whitespace-nowrap">
+                              ⚠ gap {gap}
+                            </span>
+                          )}
+                          {!semCobertura && !gapParcial && d.in > 0 && (
+                            <span className="text-[9px] text-emerald-400/60 font-mono">✓ {d.in}/{d.out}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Resumo estatístico */}
+                <div className="mt-4 pt-3 border-t border-white/8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <p className="text-sky-300 font-black text-lg leading-none">
+                      {waStats.peakAM ? `${String(Number(waStats.peakAM[0])).padStart(2,"0")}h` : "—"}
+                    </p>
+                    <p className="text-white/30 text-[10px] font-bold mt-0.5">Pico manhã</p>
+                    {waStats.peakAM && <p className="text-white/20 text-[9px]">{waStats.peakAM[1].in} msgs</p>}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-amber-300 font-black text-lg leading-none">
+                      {waStats.peakPM ? `${String(Number(waStats.peakPM[0])).padStart(2,"0")}h` : "—"}
+                    </p>
+                    <p className="text-white/30 text-[10px] font-bold mt-0.5">Pico tarde/noite</p>
+                    {waStats.peakPM && <p className="text-white/20 text-[9px]">{waStats.peakPM[1].in} msgs</p>}
+                  </div>
+                  <div className="text-center">
+                    <p className={`font-black text-lg leading-none ${waStats.horasSemCobertura > 3 ? "text-rose-400" : "text-amber-400"}`}>
+                      {waStats.horasSemCobertura}h
+                    </p>
+                    <p className="text-white/30 text-[10px] font-bold mt-0.5">Sem cobertura</p>
+                    <p className="text-white/20 text-[9px]">horas com demanda e 0 respostas</p>
+                  </div>
+                  <div className="text-center">
+                    <p className={`font-black text-lg leading-none ${waStats.totalGap > 20 ? "text-rose-400" : waStats.totalGap > 10 ? "text-amber-400" : "text-emerald-400"}`}>
+                      {waStats.totalGap}
+                    </p>
+                    <p className="text-white/30 text-[10px] font-bold mt-0.5">Gap total</p>
+                    <p className="text-white/20 text-[9px]">msgs recebidas sem resposta</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quem atendeu */}
+              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Bot size={13} className="text-violet-400" />
+                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Quem Atendeu</span>
+                  <span className="text-white/20 text-[10px] ml-auto">{waStats.totalOut} mensagens enviadas</span>
+                </div>
+
+                {/* Barra Maria vs Manual */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-[10px] font-bold mb-1.5">
+                    <span className="text-violet-400">🤖 Maria IA — {waStats.pctMaria}%</span>
+                    <span className="text-emerald-400">💬 Equipe Manual — {100 - waStats.pctMaria}%</span>
+                  </div>
+                  <div className="h-4 rounded-full overflow-hidden bg-white/5 flex">
+                    <div className="h-full bg-gradient-to-r from-violet-600 to-purple-500 transition-all duration-700 flex items-center justify-center"
+                      style={{ width: `${waStats.pctMaria}%` }}>
+                      {waStats.pctMaria >= 10 && <span className="text-white text-[9px] font-black">{waStats.pctMaria}%</span>}
+                    </div>
+                    <div className="h-full bg-gradient-to-r from-emerald-600 to-teal-500 flex-1 flex items-center justify-center">
+                      <span className="text-white text-[9px] font-black">{100 - waStats.pctMaria}%</span>
+                    </div>
+                  </div>
+                  <p className="text-white/20 text-[10px] mt-1.5">
+                    {waStats.pctMaria < 30
+                      ? "⚠ Equipe sobrecarregada — Maria está cobrindo menos de 30% do atendimento"
+                      : waStats.pctMaria < 60
+                      ? "Maria cobre parte do atendimento — há espaço para expandir a automação"
+                      : "Boa cobertura automatizada"}
+                  </p>
+                </div>
+
+                {/* Por atendente */}
+                <div className="space-y-2 border-t border-white/8 pt-3">
+                  {Object.entries(waStats.senderMap as Record<string, number>)
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .filter(([nome]) => !["Bruno", "Claude"].includes(nome))
+                    .map(([nome, total]) => {
+                      const displayNome = nome === "Tamires" ? "Thamires"
+                        : nome === "Clínica Pronutro" ? "Clínica"
+                        : nome;
+                      const pct     = waStats.totalOut > 0 ? Math.round((total as number) / waStats.totalOut * 100) : 0;
+                      const isMaria = nome === "Maria IA";
+                      return (
+                        <div key={nome} className="flex items-center gap-3">
+                          <span className={`text-[10px] font-bold w-28 truncate shrink-0 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
+                            {isMaria ? "🤖" : "💬"} {displayNome}
+                          </span>
+                          <div className="flex-1 h-3 rounded-full overflow-hidden bg-white/5">
+                            <div className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${Math.max(pct, 2)}%`,
+                                background: isMaria ? "rgba(139,92,246,0.6)" : "rgba(16,185,129,0.6)",
+                              }} />
+                          </div>
+                          <span className="text-white/40 text-[10px] font-mono w-12 text-right shrink-0">{total as number} msg</span>
+                          <span className="text-white/20 text-[10px] w-8 text-right shrink-0">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* KPIs ──────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <KpiCard label="Receita no Período" icon={DollarSign} color="emerald"
@@ -459,8 +700,8 @@ export default function RelatorioPage() {
               </div>
               <div className="flex-1 flex flex-col justify-center space-y-2.5">
                 {FUNIL_STAGES.map(s => {
-                  const val    = stats.stageCount[s.key] || 0;
-                  const barPct = Math.round(val / maxStage * 100);
+                  const val      = stats.stageCount[s.key] || 0;
+                  const barPct   = Math.round(val / maxStage * 100);
                   const pctTotal = stats.totalLeads > 0 ? Math.round(val / stats.totalLeads * 100) : 0;
                   return (
                     <div key={s.key} className="flex items-center gap-3">
@@ -519,78 +760,6 @@ export default function RelatorioPage() {
             </div>
           )}
 
-          {/* Performance por médico ─────────────────────────────────────── */}
-          {stats.medicos.length > 0 && (
-            <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
-              <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2">
-                <Star size={13} className="text-amber-400" />
-                <span className="text-white/60 text-xs font-black uppercase tracking-wider">Performance por Médico</span>
-                <span className="text-white/20 text-[10px] ml-auto">{periodoLabel}</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.02)" }}>
-                      {["Médico", "Realizadas", "Confirmadas", "No-Show", "Taxa NS", "Canceladas", "Receita"].map(h => (
-                        <th key={h} className="px-3 py-2.5 text-left text-white/25 font-black uppercase tracking-wider text-[9px] whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.medicos.map((med: any, i: number) => {
-                      const total = med.realizados + med.noShow;
-                      const txNS  = total > 0 ? Math.round(med.noShow / total * 100) : 0;
-                      return (
-                        <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition">
-                          <td className="px-3 py-3 text-white font-bold whitespace-nowrap">
-                            {i === 0 && <Star size={10} className="inline text-amber-400 mr-1 mb-0.5" />}
-                            {med.nome}
-                          </td>
-                          <td className="px-3 py-3 text-emerald-300 font-black">{med.realizados}</td>
-                          <td className="px-3 py-3 text-sky-300 font-black">{med.confirmados}</td>
-                          <td className="px-3 py-3 font-black" style={{ color: med.noShow > 0 ? "#f87171" : "#6ee7b7" }}>{med.noShow}</td>
-                          <td className="px-3 py-3">
-                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
-                              txNS >= 20 ? "bg-rose-500/20 text-rose-300" :
-                              txNS >= 10 ? "bg-amber-500/20 text-amber-300" :
-                                           "bg-emerald-500/20 text-emerald-300"
-                            }`}>{txNS}%</span>
-                          </td>
-                          <td className="px-3 py-3 text-white/40">{med.cancelados}</td>
-                          <td className="px-3 py-3 text-emerald-300 font-bold whitespace-nowrap">{BRL(med.receita)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mini bar chart de receita por médico */}
-              {stats.medicos.some((m: any) => m.receita > 0) && (
-                <div className="px-4 py-4 border-t border-white/8">
-                  <p className="text-white/25 text-[10px] font-black uppercase tracking-wider mb-3">Distribuição de Receita</p>
-                  <div className="space-y-2">
-                    {stats.medicos.filter((m: any) => m.receita > 0).map((med: any) => {
-                      const pctR = stats.receita > 0 ? Math.round(med.receita / stats.receita * 100) : 0;
-                      return (
-                        <div key={med.nome} className="flex items-center gap-3">
-                          <p className="text-white/40 text-[10px] font-bold w-24 truncate shrink-0">{med.nome}</p>
-                          <div className="flex-1 h-4 rounded-lg overflow-hidden bg-white/5">
-                            <div className="h-full rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 transition-all duration-700 flex items-center px-2"
-                              style={{ width: `${Math.max(pctR, 3)}%` }}>
-                              <span className="text-white text-[9px] font-black whitespace-nowrap">{pctR}%</span>
-                            </div>
-                          </div>
-                          <span className="text-emerald-300 text-[10px] font-bold w-20 text-right shrink-0">{BRL(med.receita)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* O que mais vende ──────────────────────────────────────────── */}
           {stats.topConsultas?.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -626,7 +795,7 @@ export default function RelatorioPage() {
                 </div>
               </div>
 
-              {/* O que as pessoas mais pedem (keywords das conversas) */}
+              {/* O que as pessoas mais pedem (keywords) */}
               <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
                 <div className="flex items-center gap-2 mb-4">
                   <MessageSquare size={13} className="text-sky-400" />
@@ -711,173 +880,51 @@ export default function RelatorioPage() {
             </div>
           )}
 
-          {/* WhatsApp — Demanda Operacional ────────────────────────────── */}
-          {waStats && (
-            <div className="space-y-4">
-
-              {/* Título da seção */}
-              <div className="flex items-center gap-2 pt-2">
-                <PhoneCall size={14} className="text-emerald-400" />
-                <span className="text-white font-black text-sm uppercase tracking-widest">WhatsApp — Demanda Operacional</span>
-                <div className="flex-1 h-px bg-white/8 ml-2" />
-                <span className="text-white/20 text-[10px]">{periodoLabel}</span>
+          {/* Performance por médico — cards compactos ───────────────────── */}
+          {stats.medicos.length > 0 && (
+            <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="flex items-center gap-2 mb-4">
+                <Star size={13} className="text-amber-400" />
+                <span className="text-white/60 text-xs font-black uppercase tracking-wider">Performance por Médico</span>
+                <span className="text-white/20 text-[10px] ml-auto">{periodoLabel}</span>
               </div>
-
-              {/* KPIs WhatsApp */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center mb-3 shadow-lg">
-                    <MessageSquare size={15} className="text-white" />
-                  </div>
-                  <p className="text-white font-black text-2xl leading-none">{waStats.totalIn}</p>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Msgs Recebidas</p>
-                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.totalOut} respondidas</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-3 shadow-lg">
-                    <CheckCircle size={15} className="text-white" />
-                  </div>
-                  <p className="text-white font-black text-2xl leading-none">{waStats.pctResposta}%</p>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Leads Respondidos</p>
-                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.leadsRespondidos} de {waStats.leadsAtivos}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 shadow-lg ${waStats.semResposta > 10 ? "from-rose-500 to-red-600" : "from-amber-500 to-orange-500"}`}>
-                    <XCircle size={15} className="text-white" />
-                  </div>
-                  <p className={`font-black text-2xl leading-none ${waStats.semResposta > 10 ? "text-rose-400" : "text-amber-400"}`}>{waStats.semResposta}</p>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Sem Retorno</p>
-                  <p className="text-white/25 text-[10px] mt-0.5">leads sem nenhuma resposta</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-3 shadow-lg">
-                    <Bot size={15} className="text-white" />
-                  </div>
-                  <p className="text-white font-black text-2xl leading-none">{waStats.pctMaria}%</p>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Maria IA</p>
-                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.mariaOut} msgs · {waStats.humanOut} manual</p>
-                </div>
-              </div>
-
-              {/* Demanda por hora */}
-              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock size={13} className="text-sky-400" />
-                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Demanda por Horário</span>
-                  <span className="text-white/20 text-[10px] ml-auto">Horário de Brasília</span>
-                </div>
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="flex items-center gap-1 text-[10px] text-sky-300/60"><span className="w-3 h-2 rounded-sm bg-sky-500/60 inline-block" /> Pacientes</span>
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-300/60"><span className="w-3 h-2 rounded-sm bg-emerald-500/60 inline-block" /> Equipe</span>
-                  <span className="flex items-center gap-1 text-[10px] text-rose-300/60"><span className="w-3 h-2 rounded-sm bg-rose-500/60 inline-block" /> Sem cobertura</span>
-                </div>
-                {/* Barras por hora — só mostra horas com atividade ou horário comercial */}
-                <div className="space-y-1.5 overflow-y-auto max-h-80">
-                  {Array.from({ length: 24 }, (_, h) => {
-                    const d = waStats.hourMap[h];
-                    if (!d || (d.in === 0 && d.out === 0)) return null;
-                    const inPct  = Math.round(d.in  / waStats.peakIn * 100);
-                    const outPct = Math.round(d.out / waStats.peakIn * 100);
-                    const semCobertura = d.in > 0 && d.out === 0;
-                    const gap = d.in > 0 && d.out < d.in * 0.5;
-                    const hora = `${String(h).padStart(2, "0")}h`;
-                    return (
-                      <div key={h} className="flex items-center gap-2">
-                        <span className="text-white/30 text-[10px] font-mono w-6 shrink-0">{hora}</span>
-                        <div className="flex-1 space-y-0.5">
-                          {/* Barra pacientes */}
-                          <div className="h-3 rounded-sm overflow-hidden bg-white/5 flex items-center">
-                            <div
-                              className="h-full rounded-sm transition-all duration-700 flex items-center px-1.5"
-                              style={{ width: `${Math.max(inPct, 2)}%`, backgroundColor: semCobertura ? "rgba(239,68,68,0.5)" : "rgba(14,165,233,0.5)" }}
-                            >
-                              {d.in >= 5 && <span className="text-white text-[8px] font-black whitespace-nowrap">{d.in}</span>}
-                            </div>
-                          </div>
-                          {/* Barra equipe */}
-                          <div className="h-3 rounded-sm overflow-hidden bg-white/5 flex items-center">
-                            <div
-                              className="h-full rounded-sm transition-all duration-700 flex items-center px-1.5"
-                              style={{ width: `${Math.max(outPct, d.out > 0 ? 2 : 0)}%`, backgroundColor: "rgba(16,185,129,0.5)" }}
-                            >
-                              {d.out >= 5 && <span className="text-white text-[8px] font-black whitespace-nowrap">{d.out}</span>}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="shrink-0 w-20 text-right">
-                          {semCobertura && (
-                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">SEM COB.</span>
-                          )}
-                          {gap && !semCobertura && (
-                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">GAP</span>
-                          )}
-                          {!semCobertura && !gap && d.in > 0 && (
-                            <span className="text-[9px] text-white/20 font-mono">{d.in}/{d.out}</span>
-                          )}
-                        </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {stats.medicos.map((med: any, i: number) => {
+                  const total = med.realizados + med.noShow;
+                  const txNS  = total > 0 ? Math.round(med.noShow / total * 100) : 0;
+                  const CORES = ["#22c55e","#0ea5e9","#f59e0b","#a78bfa","#f97316","#06b6d4"];
+                  return (
+                    <div key={med.nome} className="rounded-2xl border border-white/10 p-4 flex flex-col gap-2.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: CORES[i % CORES.length] }} />
+                        <p className="text-white font-black text-xs truncate leading-tight">{med.nome}</p>
+                        {i === 0 && <Star size={9} className="text-amber-400 ml-auto shrink-0" />}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Cobertura: Maria vs Manual */}
-              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Bot size={13} className="text-violet-400" />
-                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Quem Atendeu</span>
-                  <span className="text-white/20 text-[10px] ml-auto">{waStats.totalOut} mensagens enviadas</span>
-                </div>
-
-                {/* Barra de cobertura Maria vs Manual */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                    <span className="text-violet-400">🤖 Maria IA — {waStats.pctMaria}%</span>
-                    <span className="text-emerald-400">💬 Equipe Manual — {100 - waStats.pctMaria}%</span>
-                  </div>
-                  <div className="h-4 rounded-full overflow-hidden bg-white/5 flex">
-                    <div className="h-full bg-gradient-to-r from-violet-600 to-purple-500 transition-all duration-700 flex items-center justify-center"
-                      style={{ width: `${waStats.pctMaria}%` }}>
-                      {waStats.pctMaria >= 10 && <span className="text-white text-[9px] font-black">{waStats.pctMaria}%</span>}
-                    </div>
-                    <div className="h-full bg-gradient-to-r from-emerald-600 to-teal-500 flex-1 flex items-center justify-center">
-                      <span className="text-white text-[9px] font-black">{100 - waStats.pctMaria}%</span>
-                    </div>
-                  </div>
-                  <p className="text-white/20 text-[10px] mt-1.5">
-                    {waStats.pctMaria < 30
-                      ? "⚠ Equipe sobrecarregada — Maria está cobrindo menos de 30% do atendimento"
-                      : waStats.pctMaria < 60
-                      ? "Maria cobre parte do atendimento — há espaço para expandir a automação"
-                      : "Boa cobertura automatizada"}
-                  </p>
-                </div>
-
-                {/* Por atendente */}
-                <div className="space-y-2 border-t border-white/8 pt-3">
-                  {Object.entries(waStats.senderMap as Record<string, number>)
-                    .sort((a, b) => (b[1] as number) - (a[1] as number))
-                    .map(([nome, total]) => {
-                      const pct = waStats.totalOut > 0 ? Math.round((total as number) / waStats.totalOut * 100) : 0;
-                      const isMaria = nome === "Maria IA";
-                      return (
-                        <div key={nome} className="flex items-center gap-3">
-                          <span className={`text-[10px] font-bold w-28 truncate shrink-0 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
-                            {isMaria ? "🤖" : "💬"} {nome}
-                          </span>
-                          <div className="flex-1 h-3 rounded-full overflow-hidden bg-white/5">
-                            <div className="h-full rounded-full transition-all duration-700"
-                              style={{
-                                width: `${Math.max(pct, 2)}%`,
-                                background: isMaria ? "rgba(139,92,246,0.6)" : "rgba(16,185,129,0.6)",
-                              }} />
-                          </div>
-                          <span className="text-white/40 text-[10px] font-mono w-12 text-right shrink-0">{total as number} msg</span>
-                          <span className="text-white/20 text-[10px] w-8 text-right shrink-0">{pct}%</span>
+                      <div className="space-y-1 border-t border-white/8 pt-2">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-white/30">Realizadas</span>
+                          <span className="text-white font-black">{med.realizados}</span>
                         </div>
-                      );
-                    })}
-                </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-white/30">Confirmadas</span>
+                          <span className="text-sky-300 font-black">{med.confirmados}</span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-white/30">No-show</span>
+                          <span className={`font-black ${txNS >= 20 ? "text-rose-400" : txNS >= 10 ? "text-amber-400" : "text-emerald-400"}`}>
+                            {txNS}%
+                          </span>
+                        </div>
+                        {med.receita > 0 && (
+                          <div className="flex justify-between text-[10px] pt-1 border-t border-white/5">
+                            <span className="text-white/30">Receita</span>
+                            <span className="text-emerald-400 font-black">{BRL(med.receita)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
