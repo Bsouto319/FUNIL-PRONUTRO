@@ -87,6 +87,24 @@ export async function updateLeadNotes(id: string, notes: string) {
   if (error) console.error("updateLeadNotes", error.message);
 }
 
+export async function updateLeadProfile(id: string, data: {
+  name?: string;
+  email?: string;
+  origem?: string;
+  pagamento_status?: string;
+  pagamento_valor?: number | null;
+  pagamento_metodo?: string;
+  pagamento_data?: string;
+  pagamento_obs?: string;
+}): Promise<boolean> {
+  const { error } = await supabase
+    .from("pn_leads")
+    .update({ ...data, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) console.error("updateLeadProfile", error.message);
+  return !error;
+}
+
 export async function deleteLead(id: string) {
   const { error } = await supabase.from("pn_leads").delete().eq("id", id);
   if (error) console.error("deleteLead", error.message);

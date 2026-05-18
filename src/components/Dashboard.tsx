@@ -31,8 +31,10 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
   const [filterHoje, setFilterHoje]       = useState(false);
-  const [organizing, setOrganizing]         = useState(false);
-  const [organizeMsg, setOrganizeMsg]       = useState("");
+  const [organizeModal, setOrganizeModal] = useState<{
+    open: boolean; total: number; current: number; done: boolean;
+    results: { name: string; from: string; to: string }[];
+  } | null>(null);
   const [notifications, setNotifications]   = useState<any[]>([]);
   const [toasts, setToasts]                 = useState<any[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
@@ -182,14 +184,12 @@ export default function Dashboard({ user }: { user: any }) {
   }
 
   async function handleOrganize() {
-    setOrganizing(true);
-    setOrganizeMsg("");
-    // Processa leads que não são "agendado" — em lotes de 5 para não sobrecarregar
-    const toProcess = leads.filter(l => l.stage !== "agendado");
-    let changed = 0;
+    const toProcess = leads.filter(l => !["agendado", "resolvido", "perdido"].includes(l.stage));
+    setOrganizeModal({ open: true, total: toProcess.length, current: 0, done: false, results: [] });
+
     for (let i = 0; i < toProcess.length; i += 5) {
       const batch = toProcess.slice(i, i + 5);
-      await Promise.all(batch.map(async (l) => {
+      const batchResults = await Promise.all(batch.map(async (l) => {
         try {
           const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-auto-stage", {
             method: "POST",
@@ -197,14 +197,27 @@ export default function Dashboard({ user }: { user: any }) {
             body: JSON.stringify({ lead_id: l.id }),
           });
           const data = await res.json();
-          if (data.changed) changed++;
+          if (data.changed) {
+            return {
+              name: l.name || l.whatsapp_name || `+${l.phone}`,
+              from: l.stage,
+              to: data.new_stage || "?",
+            };
+          }
         } catch {}
+        return null;
       }));
+
+      const valid = batchResults.filter(Boolean) as { name: string; from: string; to: string }[];
+      setOrganizeModal(prev => prev ? {
+        ...prev,
+        current: Math.min(prev.current + batch.length, prev.total),
+        results: [...prev.results, ...valid],
+      } : null);
     }
+
     await load();
-    setOrganizeMsg(`✅ ${changed} lead${changed !== 1 ? "s" : ""} reorganizado${changed !== 1 ? "s" : ""}`);
-    setOrganizing(false);
-    setTimeout(() => setOrganizeMsg(""), 4000);
+    setOrganizeModal(prev => prev ? { ...prev, current: prev.total, done: true } : null);
   }
 
   function handleNotifClick(n: any) {
@@ -353,24 +366,21 @@ export default function Dashboard({ user }: { user: any }) {
           <div className="ml-auto flex items-center gap-2">
             {/* Organizar Kanban com IA */}
             {page === "kanban" && (
-              <div className="flex items-center gap-2">
-                {organizeMsg && (
-                  <span className="text-xs font-bold text-emerald-300 whitespace-nowrap">{organizeMsg}</span>
-                )}
-                <button
-                  onClick={handleOrganize}
-                  disabled={organizing}
-                  title="Analisa todas as conversas e move cada lead para o stage correto automaticamente"
-                  className={`flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border transition ${
-                    organizing
-                      ? "bg-amber-500/20 border-amber-500/40 text-amber-300 cursor-wait"
-                      : "bg-violet-600/20 hover:bg-violet-600/40 border-violet-500/30 text-violet-300"
-                  }`}
-                >
-                  <Brain size={13} className={organizing ? "animate-pulse" : ""} />
-                  <span className="hidden sm:inline">{organizing ? "Organizando..." : "🎯 Organizar IA"}</span>
-                </button>
-              </div>
+              <button
+                onClick={handleOrganize}
+                disabled={organizeModal?.open && !organizeModal?.done}
+                title="Analisa todas as conversas e move cada lead para o stage correto automaticamente"
+                className={`flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border transition ${
+                  organizeModal?.open && !organizeModal?.done
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300 cursor-wait"
+                    : "bg-violet-600/20 hover:bg-violet-600/40 border-violet-500/30 text-violet-300"
+                }`}
+              >
+                <Brain size={13} className={organizeModal?.open && !organizeModal?.done ? "animate-pulse" : ""} />
+                <span className="hidden sm:inline">
+                  {organizeModal?.open && !organizeModal?.done ? "Organizando..." : "🎯 Organizar IA"}
+                </span>
+              </button>
             )}
             {/* Novo Paciente */}
             {page === "kanban" && (
@@ -654,6 +664,86 @@ export default function Dashboard({ user }: { user: any }) {
           </div>
         ))}
       </div>
+
+      {/* Modal de progresso do Organizar IA */}
+      {organizeModal?.open && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
+          <div className="w-full max-w-md rounded-2xl border border-violet-500/30 shadow-2xl overflow-hidden" style={{ background: "rgba(10,18,55,0.98)" }}>
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-white/10 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-violet-600/30 flex items-center justify-center">
+                <Brain size={15} className={organizeModal.done ? "text-violet-300" : "text-violet-300 animate-pulse"} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-black text-sm">🎯 Organizando Kanban com IA</p>
+                <p className="text-white/40 text-[10px] font-bold mt-0.5">
+                  {organizeModal.done
+                    ? `Concluído — ${organizeModal.results.length} lead${organizeModal.results.length !== 1 ? "s" : ""} movido${organizeModal.results.length !== 1 ? "s" : ""}`
+                    : `Analisando ${organizeModal.current} de ${organizeModal.total} leads...`}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="px-5 pt-4">
+              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${organizeModal.total > 0 ? Math.round((organizeModal.current / organizeModal.total) * 100) : 0}%`,
+                    background: organizeModal.done ? "linear-gradient(90deg, #22c55e, #16a34a)" : "linear-gradient(90deg, #7c3aed, #a855f7)",
+                  }}
+                />
+              </div>
+              <p className="text-right text-[10px] text-white/25 font-bold mt-1">
+                {organizeModal.total > 0 ? Math.round((organizeModal.current / organizeModal.total) * 100) : 0}%
+              </p>
+            </div>
+
+            {/* Results list */}
+            <div className="px-5 pb-2 max-h-60 overflow-y-auto mt-2 space-y-1.5">
+              {organizeModal.results.length === 0 && !organizeModal.done && (
+                <p className="text-white/25 text-xs text-center py-4">Analisando conversas...</p>
+              )}
+              {organizeModal.results.length === 0 && organizeModal.done && (
+                <p className="text-white/40 text-xs text-center py-4">Nenhum lead precisava ser movido.</p>
+              )}
+              {organizeModal.results.map((r, i) => {
+                const stageLabel: Record<string, string> = {
+                  novo_lead: "Novo Lead", maria_ia: "Maria IA", interesse_real: "Interesse Real",
+                  agendado: "Agendado", resolvido: "Resolvido", perdido: "Perdido",
+                };
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                    <span className="text-violet-300 text-xs font-black shrink-0">✓</span>
+                    <span className="text-white text-xs font-bold truncate flex-1">{r.name}</span>
+                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold">
+                      <span className="text-white/35">{stageLabel[r.from] || r.from}</span>
+                      <span className="text-violet-400">→</span>
+                      <span className="text-violet-300">{stageLabel[r.to] || r.to}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => setOrganizeModal(null)}
+                disabled={!organizeModal.done}
+                className={`px-5 py-2 rounded-xl text-sm font-black transition ${
+                  organizeModal.done
+                    ? "bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-500/20"
+                    : "bg-white/5 text-white/25 cursor-wait"
+                }`}
+              >
+                {organizeModal.done ? "Fechar" : "Aguarde..."}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:translateX(0); } }`}</style>
     </div>

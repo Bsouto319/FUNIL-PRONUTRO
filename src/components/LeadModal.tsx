@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Brain, Copy, CheckCheck } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Brain, Copy, CheckCheck, UserCircle, Save } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
   fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal,
+  updateLeadProfile,
 } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
@@ -26,7 +27,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [sending, setSending]     = useState(false);
   const [notes, setNotes]         = useState(lead.notes || "");
   const [stage, setStage]         = useState(lead.stage);
-  const [tab, setTab]             = useState<"chat" | "agendar" | "notas">("chat");
+  const [tab, setTab]             = useState<"chat" | "agendar" | "notas" | "perfil">("chat");
   const [medicos, setMedicos]     = useState<any[]>([]);
   const [medicoId, setMedicoId]   = useState("");
   const [data, setData]           = useState("");
@@ -42,6 +43,19 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [aiAnalysis, setAiAnalysis]       = useState<any>(null);
   const [analyzing, setAnalyzing]         = useState(false);
   const [copied, setCopied]               = useState(false);
+
+  // Perfil / pagamento
+  const [perfNome,      setPerfNome]      = useState(lead.name || "");
+  const [perfEmail,     setPerfEmail]     = useState(lead.email || "");
+  const [perfOrigem,    setPerfOrigem]    = useState(lead.origem || "");
+  const [perfPagStatus, setPerfPagStatus] = useState(lead.pagamento_status || "pendente");
+  const [perfPagValor,  setPerfPagValor]  = useState(lead.pagamento_valor != null ? String(lead.pagamento_valor) : "");
+  const [perfPagMetodo, setPerfPagMetodo] = useState(lead.pagamento_metodo || "");
+  const [perfPagData,   setPerfPagData]   = useState(lead.pagamento_data || "");
+  const [perfPagObs,    setPerfPagObs]    = useState(lead.pagamento_obs || "");
+  const [savingPerf,    setSavingPerf]    = useState(false);
+  const [perfSaved,     setPerfSaved]     = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Notas Fiscais state
@@ -223,6 +237,25 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     setDeletingNfId(null);
   }
 
+  async function handleSaveProfile() {
+    setSavingPerf(true);
+    const ok = await updateLeadProfile(lead.id, {
+      name:              perfNome || undefined,
+      email:             perfEmail || undefined,
+      origem:            perfOrigem || undefined,
+      pagamento_status:  perfPagStatus || undefined,
+      pagamento_valor:   perfPagValor ? parseFloat(perfPagValor.replace(",", ".")) : null,
+      pagamento_metodo:  perfPagMetodo || undefined,
+      pagamento_data:    perfPagData || undefined,
+      pagamento_obs:     perfPagObs || undefined,
+    });
+    setSavingPerf(false);
+    if (ok) {
+      setPerfSaved(true);
+      setTimeout(() => setPerfSaved(false), 2500);
+    }
+  }
+
   const name    = lead.name || lead.phone;
   const medicoSel = medicos.find(m => m.id === medicoId);
 
@@ -252,19 +285,29 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
-          {(["chat", "agendar", "notas"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${tab === t ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
-              {t === "chat" ? "💬 Chat" : t === "agendar" ? "📅 Agendar" : (
-                <>
-                  <FileText size={11} />
-                  Notas Fiscais
-                  {nfs.length > 0 && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded-full font-black">{nfs.length}</span>}
-                </>
-              )}
-            </button>
-          ))}
+        <div className="flex gap-1 px-5 pt-3 flex-shrink-0 overflow-x-auto">
+          <button onClick={() => setTab("chat")}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${tab === "chat" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
+            💬 Chat
+          </button>
+          <button onClick={() => setTab("perfil")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${tab === "perfil" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
+            <UserCircle size={11} />
+            Perfil
+            {(lead.pagamento_status === "pago") && (
+              <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded-full font-black">✓ Pago</span>
+            )}
+          </button>
+          <button onClick={() => setTab("agendar")}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${tab === "agendar" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
+            📅 Agendar
+          </button>
+          <button onClick={() => setTab("notas")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${tab === "notas" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
+            <FileText size={11} />
+            Notas Fiscais
+            {nfs.length > 0 && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded-full font-black">{nfs.length}</span>}
+          </button>
         </div>
 
         {/* ── CHAT TAB ── */}
@@ -513,6 +556,119 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                 : (!medicoId || !data || !horaManual)
                 ? `Preencha ${!medicoId ? "médico" : !data ? "data" : "horário"} para confirmar`
                 : `✅ Confirmar — ${data.split("-").reverse().join("/")} às ${horaManual}${origem ? `  ·  ${origem}` : ""}`}
+            </button>
+          </div>
+        )}
+
+        {/* ── PERFIL TAB ── */}
+        {tab === "perfil" && (
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
+
+            {/* Dados do paciente */}
+            <div className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <p className="text-white/60 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                <UserCircle size={11} />
+                Dados do Paciente
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nome</label>
+                  <input value={perfNome} onChange={e => setPerfNome(e.target.value)} placeholder="Nome completo"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">WhatsApp</label>
+                  <input value={lead.phone} readOnly
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white/40 text-xs font-mono cursor-not-allowed" />
+                </div>
+              </div>
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">E-mail</label>
+                <input type="email" value={perfEmail} onChange={e => setPerfEmail(e.target.value)} placeholder="paciente@email.com"
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+              </div>
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Por onde veio</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {["WhatsApp", "Google", "Instagram", "Facebook", "Indicação", "Doctoralia", "TikTok", "Outro"].map(op => (
+                    <button key={op} onClick={() => setPerfOrigem(perfOrigem === op ? "" : op)}
+                      className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${perfOrigem === op ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                      {op === "WhatsApp" ? "📱" : op === "Google" ? "🔍" : op === "Instagram" ? "📸" : op === "Facebook" ? "👥" : op === "Indicação" ? "🤝" : op === "Doctoralia" ? "🏥" : op === "TikTok" ? "🎵" : "❓"} {op}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Pagamento */}
+            <div className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <p className="text-white/60 text-[10px] font-black uppercase tracking-wider">💳 Pagamento</p>
+
+              {/* Status */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { key: "pago",      label: "✅ Pago",       cls: "bg-emerald-600/80 border-emerald-500" },
+                  { key: "pendente",  label: "⏳ Pendente",   cls: "bg-amber-600/80 border-amber-500" },
+                  { key: "aguardando",label: "🕐 Aguardando", cls: "bg-sky-600/80 border-sky-500" },
+                  { key: "isento",    label: "🎁 Isento",     cls: "bg-indigo-600/80 border-indigo-500" },
+                ].map(s => (
+                  <button key={s.key} onClick={() => setPerfPagStatus(s.key)}
+                    className={`py-2 rounded-lg text-[10px] font-bold border transition ${perfPagStatus === s.key ? `${s.cls} text-white` : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Valor (R$)</label>
+                  <input type="number" min="0" step="0.01" value={perfPagValor} onChange={e => setPerfPagValor(e.target.value)} placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data do pagamento</label>
+                  <input type="date" value={perfPagData} onChange={e => setPerfPagData(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+              </div>
+
+              {/* Método */}
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Forma de pagamento</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {["PIX", "Cartão", "Dinheiro", "Transferência", "Convênio"].map(m => (
+                    <button key={m} onClick={() => setPerfPagMetodo(perfPagMetodo === m ? "" : m)}
+                      className={`py-2 rounded-lg text-[10px] font-bold border transition ${perfPagMetodo === m ? "bg-sky-600/80 text-white border-sky-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Observações do pagamento</label>
+                <input value={perfPagObs} onChange={e => setPerfPagObs(e.target.value)} placeholder="Ex: parcela 2/3, recibo enviado..."
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+              </div>
+            </div>
+
+            {/* Salvar */}
+            <button
+              onClick={handleSaveProfile}
+              disabled={savingPerf}
+              className={`w-full py-3 rounded-xl text-sm font-black transition flex items-center justify-center gap-2 ${
+                perfSaved
+                  ? "bg-emerald-600 text-white"
+                  : "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-500/20"
+              } disabled:opacity-50`}
+            >
+              {savingPerf ? (
+                <><Save size={14} className="animate-spin" /> Salvando...</>
+              ) : perfSaved ? (
+                <><CheckCheck size={14} /> Salvo com sucesso!</>
+              ) : (
+                <><Save size={14} /> Salvar Perfil</>
+              )}
             </button>
           </div>
         )}
