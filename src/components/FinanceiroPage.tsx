@@ -565,12 +565,25 @@ export default function FinanceiroPage() {
       }
     } else if (textSearch) {
       const q = norm(textSearch);
-      result = result.filter(t =>
-        norm(t.nome_paciente    || "").includes(q) ||
-        norm(t.medico_nome      || "").includes(q) ||
-        norm(t.observacoes      || "").includes(q) ||
-        norm(t.forma_pagamento  || "").includes(q)
-      );
+      // Strip separators → digits only → numeric search if ≥ 2 digits and no letters
+      const digits = textSearch.replace(/[.,\s]/g, "");
+      const isNumericSearch = digits.length >= 2 && /^\d+$/.test(digits);
+
+      result = result.filter(t => {
+        if (norm(t.nome_paciente   || "").includes(q)) return true;
+        if (norm(t.medico_nome     || "").includes(q)) return true;
+        if (norm(t.observacoes     || "").includes(q)) return true;
+        if (norm(t.forma_pagamento || "").includes(q)) return true;
+        if (isNumericSearch) {
+          // Compare against the integer part of valor (ex: "835" matches R$835 and R$1.835)
+          const valorInt = Math.floor(Number(t.valor || 0)).toString();
+          if (valorInt.includes(digits)) return true;
+          // Also exact match with decimals: "83511" matches 835.11
+          const valorCents = Math.round(Number(t.valor || 0) * 100).toString();
+          if (valorCents === digits) return true;
+        }
+        return false;
+      });
     }
 
     return result.sort((a, b) => {
