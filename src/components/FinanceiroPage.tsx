@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle } from "lucide-react";
-import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes } from "../lib/api";
+import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send } from "lucide-react";
+import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
 
 function fmt(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -438,6 +438,159 @@ function parseSmartQuery(raw: string): {
   return result;
 }
 
+// ── ReciboModal ───────────────────────────────────────────────────────────────
+
+function gerarHTMLRecibo(tx: any): string {
+  const data = tx.data_pagamento ? new Date(tx.data_pagamento).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "—";
+  const valor = Number(tx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const forma = tx.forma_pagamento ? tx.forma_pagamento.charAt(0).toUpperCase() + tx.forma_pagamento.slice(1) : "—";
+  const num = (tx.id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo #${num}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #222; }
+  h1 { font-size: 20px; text-align: center; margin: 0; letter-spacing: 2px; }
+  .sub { text-align: center; font-size: 12px; color: #666; margin-bottom: 24px; }
+  .divider { border-top: 2px solid #000; margin: 16px 0; }
+  .thin { border-top: 1px solid #ccc; margin: 12px 0; }
+  .num { text-align: right; font-size: 11px; color: #888; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  td { padding: 7px 0; vertical-align: top; }
+  td:first-child { color: #555; font-size: 12px; width: 38%; }
+  td:last-child { font-weight: bold; font-size: 13px; }
+  .valor-total { text-align: right; font-size: 22px; font-weight: bold; margin: 8px 0; }
+  .extenso { text-align: right; font-size: 11px; color: #555; }
+  .ass { margin-top: 60px; text-align: center; }
+  .ass-line { border-top: 1px solid #000; display: inline-block; width: 300px; padding-top: 6px; font-size: 12px; }
+  .footer { margin-top: 40px; font-size: 10px; color: #aaa; text-align: center; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+<h1>PRONUTRO CLÍNICA</h1>
+<p class="sub">Nutrição Esportiva e Clínica · Brasília-DF</p>
+<div class="divider"></div>
+<p class="num">RECIBO Nº ${num}</p>
+<table>
+  <tr><td>Paciente</td><td>${tx.nome_paciente || "—"}</td></tr>
+  <tr><td>Profissional</td><td>${(tx.medico_nome || "—").replace(/^(Dr\.|Dra\.) /, "")}</td></tr>
+  <tr><td>Serviço</td><td>Consulta de Nutrição</td></tr>
+  <tr><td>Data</td><td>${data}</td></tr>
+  <tr><td>Forma de pagamento</td><td>${forma}${tx.bandeira ? " · " + tx.bandeira : ""}${tx.parcelas > 1 ? " · " + tx.parcelas + "x" : ""}</td></tr>
+  ${tx.observacoes ? `<tr><td>Observações</td><td>${tx.observacoes}</td></tr>` : ""}
+</table>
+<div class="divider"></div>
+<p class="valor-total">${valor}</p>
+<div class="thin"></div>
+<div class="ass">
+  <span class="ass-line">Assinatura / Carimbo</span>
+</div>
+<p class="footer">Emitido em ${new Date().toLocaleDateString("pt-BR")} · Este recibo tem validade legal como comprovante de pagamento.</p>
+</body></html>`;
+}
+
+function ReciboModal({ tx, onClose }: { tx: any; onClose: () => void }) {
+  const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  function handlePrint() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(gerarHTMLRecibo(tx));
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  async function handleWhatsApp() {
+    const p = phone.replace(/\D/g, "");
+    if (p.length < 10) return alert("Informe um telefone válido.");
+    setSending(true);
+    const data = tx.data_pagamento ? new Date(tx.data_pagamento).toLocaleDateString("pt-BR") : "—";
+    const valor = Number(tx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const num = (tx.id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+    const text = `*RECIBO DE PAGAMENTO - ProNutro*\n\n` +
+      `Nº: ${num}\n` +
+      `Paciente: ${tx.nome_paciente || "—"}\n` +
+      `Profissional: ${(tx.medico_nome || "—").replace(/^(Dr\.|Dra\.) /,"")}\n` +
+      `Serviço: Consulta de Nutrição\n` +
+      `Data: ${data}\n` +
+      `Forma: ${tx.forma_pagamento || "—"}${tx.bandeira ? " · " + tx.bandeira : ""}${tx.parcelas > 1 ? " · " + tx.parcelas + "x" : ""}\n` +
+      `*Valor: ${valor}*\n\n` +
+      `_Este comprovante confirma o recebimento do pagamento._`;
+    const ok = await sendDirectWhatsApp(p, text);
+    setSending(false);
+    if (ok) setSent(true);
+    else alert("Erro ao enviar. Verifique o número e tente novamente.");
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}>
+      <div className="w-full max-w-md rounded-2xl border border-white/10 shadow-2xl" style={{ background: "rgba(10,20,60,0.98)" }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-sky-400" />
+            <p className="text-white font-black text-sm">Emitir Recibo</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition"><X size={15} className="text-white/40" /></button>
+        </div>
+
+        {/* Preview */}
+        <div className="mx-5 my-4 rounded-xl border border-white/10 p-4 space-y-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+          <div className="text-center pb-3 border-b border-white/10">
+            <p className="text-white font-black text-sm tracking-widest">PRONUTRO CLÍNICA</p>
+            <p className="text-white/40 text-[10px]">Nutrição Esportiva e Clínica · Brasília-DF</p>
+          </div>
+          <p className="text-white/30 text-[10px] text-right">Recibo Nº {(tx.id || "").replace(/-/g, "").slice(0, 8).toUpperCase()}</p>
+          {[
+            ["Paciente",     tx.nome_paciente || "—"],
+            ["Profissional", (tx.medico_nome || "—").replace(/^(Dr\.|Dra\.) /,"")],
+            ["Serviço",      "Consulta de Nutrição"],
+            ["Data",         tx.data_pagamento ? new Date(tx.data_pagamento).toLocaleDateString("pt-BR") : "—"],
+            ["Pagamento",    `${tx.forma_pagamento || "—"}${tx.bandeira ? " · "+tx.bandeira : ""}${tx.parcelas > 1 ? " · "+tx.parcelas+"x" : ""}`],
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between text-xs">
+              <span className="text-white/40">{k}</span>
+              <span className="text-white/80 font-semibold text-right max-w-[60%]">{v}</span>
+            </div>
+          ))}
+          <div className="pt-3 border-t border-white/10 text-right">
+            <p className="text-emerald-400 font-black text-xl">{Number(tx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+          </div>
+        </div>
+
+        {/* WhatsApp send */}
+        <div className="px-5 pb-2">
+          <p className="text-white/40 text-[10px] font-bold mb-1.5">ENVIAR POR WHATSAPP</p>
+          <div className="flex gap-2">
+            <input
+              value={phone} onChange={e => setPhone(e.target.value)}
+              placeholder="5561999998888"
+              className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+            />
+            <button
+              onClick={handleWhatsApp} disabled={sending || sent}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition ${sent ? "bg-emerald-600 text-white" : "bg-emerald-600/80 hover:bg-emerald-600 text-white"} disabled:opacity-60`}
+            >
+              {sent ? "✓ Enviado" : sending ? "..." : <><Send size={12} /> Enviar</>}
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 flex gap-2">
+          <button onClick={handlePrint}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/30">
+            <Printer size={13} /> Imprimir / Salvar PDF
+          </button>
+          <button onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 text-xs font-bold transition">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 type PeriodoMode = "mes_atual" | "mes_anterior" | "ano_atual" | "90dias" | "mes_especifico" | "intervalo" | "tudo";
@@ -470,6 +623,9 @@ export default function FinanceiroPage() {
 
   // Patient history modal
   const [paciente, setPaciente] = useState<string | null>(null);
+
+  // Recibo
+  const [reciboTx, setReciboTx] = useState<any | null>(null);
 
   // Import
   const fileRef                                   = useRef<HTMLInputElement>(null);
@@ -1119,11 +1275,18 @@ export default function FinanceiroPage() {
                       </td>
                       <td className="px-4 py-3 text-right text-emerald-400 font-black whitespace-nowrap">{fmt(Number(t.valor))}</td>
                       <td className="px-2 py-3">
-                        <button onClick={() => handleDelete(t.id)} disabled={deletingId === t.id}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
-                          title="Excluir">
-                          <Trash2 size={12} />
-                        </button>
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                          <button onClick={() => setReciboTx(t)}
+                            className="p-1 rounded-lg hover:bg-sky-500/20 text-white/30 hover:text-sky-400 transition"
+                            title="Emitir Recibo">
+                            <FileText size={12} />
+                          </button>
+                          <button onClick={() => handleDelete(t.id)} disabled={deletingId === t.id}
+                            className="p-1 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
+                            title="Excluir">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1141,6 +1304,11 @@ export default function FinanceiroPage() {
           )}
         </div>
       </div>
+
+      {/* ── Modal: Recibo ────────────────────────────────────────────────────── */}
+      {reciboTx && (
+        <ReciboModal tx={reciboTx} onClose={() => setReciboTx(null)} />
+      )}
 
       {/* ── Modal: Histórico do Paciente ─────────────────────────────────────── */}
       {paciente && (

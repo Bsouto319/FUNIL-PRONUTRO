@@ -6,10 +6,11 @@ import AgendaPage from "./AgendaPage";
 import AdminPanel from "./AdminPanel";
 import FinanceiroPage from "./FinanceiroPage";
 import RelatorioPage from "./RelatorioPage";
+import ProntuarioPage from "./ProntuarioPage";
 import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
-type Page = "kanban" | "agenda" | "financeiro" | "relatorio" | "admin";
+type Page = "kanban" | "agenda" | "financeiro" | "relatorio" | "prontuario" | "admin";
 
 export default function Dashboard({ user }: { user: any }) {
   const [leads, setLeads]         = useState<any[]>([]);
@@ -197,7 +198,7 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-1 ml-2">
-            {(["kanban", "agenda", "financeiro", "relatorio", "admin"] as Page[]).map(p => {
+            {(["kanban", "agenda", "financeiro", "relatorio", "prontuario", "admin"] as Page[]).map(p => {
               const isKanban = p === "kanban";
               const hasAlert = isKanban && (newLeadAlert || newMsgAlert);
               return (
@@ -206,7 +207,7 @@ export default function Dashboard({ user }: { user: any }) {
                   onClick={() => { setPage(p); if (isKanban) { setNewLeadAlert(false); setNewMsgAlert(false); } }}
                   className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
                 >
-                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : "Admin"}
+                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : p === "prontuario" ? "Prontuário" : "Admin"}
                   {hasAlert && (
                     <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
@@ -361,6 +362,7 @@ export default function Dashboard({ user }: { user: any }) {
         {page === "agenda" && <AgendaPage />}
         {page === "financeiro" && <FinanceiroPage />}
         {page === "relatorio" && <RelatorioPage />}
+        {page === "prontuario" && <ProntuarioPage />}
         {page === "admin" && <AdminPanel user={user} />}
       </main>
 

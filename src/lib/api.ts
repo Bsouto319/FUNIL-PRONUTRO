@@ -655,3 +655,77 @@ export function exportLeadsCSV(leads: any[]) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── WhatsApp direto (sem leadId) ─────────────────────────────────────────────
+
+export async function sendDirectWhatsApp(phone: string, text: string): Promise<boolean> {
+  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
+  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
+  try {
+    const res = await fetch(`${baseUrl}/send/text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ number: phone, text }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+// ── Prontuários ───────────────────────────────────────────────────────────────
+
+export async function fetchProntuarios(leadId?: string) {
+  let q = supabase
+    .from("pn_prontuarios")
+    .select("*, medico:pn_medicos(id, nome, especialidade)")
+    .order("data_consulta", { ascending: false });
+  if (leadId) q = q.eq("lead_id", leadId);
+  const { data, error } = await q;
+  if (error) console.error("fetchProntuarios", error.message);
+  return data || [];
+}
+
+export async function upsertProntuario(p: {
+  id?: string; lead_id?: string; medico_id?: string;
+  nome_paciente?: string; telefone_paciente?: string;
+  data_consulta: string; queixa_principal?: string;
+  historia_clinica?: string; exame_fisico?: string;
+  diagnostico?: string; plano_tratamento?: string; observacoes?: string;
+}): Promise<{ id: string } | null> {
+  if (p.id) {
+    const { data, error } = await supabase.from("pn_prontuarios")
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq("id", p.id).select("id").single();
+    if (error) { console.error("upsertProntuario", error.message); return null; }
+    return data;
+  }
+  const { data, error } = await supabase.from("pn_prontuarios")
+    .insert(p).select("id").single();
+  if (error) { console.error("upsertProntuario", error.message); return null; }
+  return data;
+}
+
+export async function fetchDocumentos(prontuarioId: string) {
+  const { data, error } = await supabase.from("pn_documentos")
+    .select("*").eq("prontuario_id", prontuarioId)
+    .order("created_at", { ascending: false });
+  if (error) console.error("fetchDocumentos", error.message);
+  return data || [];
+}
+
+export async function insertDocumento(d: {
+  prontuario_id: string; lead_id?: string; medico_id?: string;
+  nome_paciente?: string; medico_nome?: string;
+  tipo: "receita" | "atestado" | "encaminhamento";
+  conteudo: string; cid?: string; dias_afastamento?: number;
+}): Promise<{ id: string } | null> {
+  const { data, error } = await supabase.from("pn_documentos")
+    .insert(d).select("id").single();
+  if (error) { console.error("insertDocumento", error.message); return null; }
+  return data;
+}
+
+export async function marcarDocumentoEnviado(id: string, phone: string) {
+  await supabase.from("pn_documentos").update({
+    enviado_whatsapp: true, phone_enviado: phone, enviado_em: new Date().toISOString(),
+  }).eq("id", id);
+}
