@@ -75,7 +75,9 @@ export default function Dashboard({ user }: { user: any }) {
   const load = useCallback(async (q?: string) => {
     const query = q !== undefined ? q : searchRef.current;
     const [l, s] = await Promise.all([fetchLeads(query), fetchStats()]);
-    setLeads(l);
+    // Dedup por ID — evita card duplicado quando realtime + polling disparam juntos
+    const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
+    setLeads(unique);
     setStats(s);
     setLoading(false);
     setRefreshing(false);
@@ -102,10 +104,14 @@ export default function Dashboard({ user }: { user: any }) {
     const msgChannel = supabase
       .channel("pn_mensagens_rt")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens" }, (payload) => {
-        if ((payload.new as any)?.direction === "in") {
+        const msg = payload.new as any;
+        if (msg?.direction === "in") {
           playNewMessageSound();
           if (pageRef.current !== "kanban") setNewMsgAlert(true);
         }
+        // Atualiza o Kanban para refletir last_sender_nome e last_message_at
+        // tanto para mensagem da Monica quanto da Maria ou do paciente
+        load();
       })
       .subscribe();
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
@@ -49,17 +49,37 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const nfFileRef = useRef<HTMLInputElement>(null);
 
+  const refreshMessages = useCallback(async () => {
+    const msgs = await fetchMessages(lead.id);
+    setMessages(msgs);
+  }, [lead.id]);
+
   useEffect(() => {
-    fetchMessages(lead.id).then(setMessages);
+    refreshMessages();
     fetchMedicos().then(setMedicos);
     fetchNotasFiscais({ leadId: lead.id }).then(setNfs);
+
     const channel = supabase
       .channel(`pn_msg_${lead.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens", filter: `lead_id=eq.${lead.id}` },
-        payload => setMessages(prev => [...prev, payload.new]))
+        payload => {
+          setMessages(prev => {
+            // dedup by id — evita mensagem duplicada se o banco já foi recarregado
+            if (prev.some((m: any) => m.id === (payload.new as any).id)) return prev;
+            return [...prev, payload.new as any];
+          });
+        })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [lead.id]);
+
+    // Polling de 8s garante que mensagens enviadas pela Monica diretamente
+    // no WhatsApp (fora do sistema) apareçam, mesmo sem lead_id no webhook
+    const poll = setInterval(refreshMessages, 8000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
+  }, [lead.id, refreshMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -196,23 +216,51 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
         {/* ── CHAT TAB ── */}
         {tab === "chat" && (
           <>
-            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2 min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 min-h-0">
               {messages.length === 0 && (
                 <p className="text-white/20 text-xs text-center py-8">Sem mensagens ainda</p>
               )}
-              {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${m.direction === "out" ? "bg-emerald-600/80 text-white rounded-br-sm" : "bg-white/10 text-white/90 rounded-bl-sm"}`}>
-                    {m.direction === "out" && m.sender_nome && (
-                      <p className="text-emerald-200/70 text-[10px] font-bold mb-0.5">{m.sender_nome}</p>
+              {messages.map((m, i) => {
+                const isMaria  = m.direction === "out" && m.sender_nome === "Maria IA";
+                const isHuman  = m.direction === "out" && m.sender_nome && m.sender_nome !== "Maria IA";
+                const isOut    = m.direction === "out";
+                const ts       = new Date(m.created_at);
+                const prevTs   = i > 0 ? new Date(messages[i - 1].created_at) : null;
+                const showDate = !prevTs || ts.toDateString() !== prevTs.toDateString();
+                const timeStr  = ts.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                const dateStr  = ts.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+
+                // Visual: Maria=violeta, humano=verde escuro, paciente=cinza
+                const bubble = isMaria
+                  ? "bg-violet-700/70 text-white rounded-br-sm border border-violet-500/30"
+                  : isHuman
+                  ? "bg-emerald-700/70 text-white rounded-br-sm border border-emerald-500/30"
+                  : "bg-white/10 text-white/90 rounded-bl-sm";
+                const timeClr = isOut ? "text-white/40 text-right" : "text-white/25";
+
+                return (
+                  <div key={m.id || i}>
+                    {showDate && (
+                      <div className="flex items-center gap-2 my-3">
+                        <div className="flex-1 h-px bg-white/8" />
+                        <span className="text-white/25 text-[9px] font-bold capitalize">{dateStr}</span>
+                        <div className="flex-1 h-px bg-white/8" />
+                      </div>
                     )}
-                    <p className="whitespace-pre-wrap">{m.body}</p>
-                    <p className={`text-[9px] mt-0.5 ${m.direction === "out" ? "text-emerald-200/50 text-right" : "text-white/30"}`}>
-                      {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                    <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                      <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${bubble}`}>
+                        {isOut && m.sender_nome && (
+                          <p className={`text-[9px] font-black mb-0.5 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
+                            {isMaria ? "🤖 Maria IA" : `💬 ${m.sender_nome}`}
+                          </p>
+                        )}
+                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        <p className={`text-[9px] mt-0.5 ${timeClr}`}>{timeStr}</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
             <form onSubmit={handleSend} className="flex gap-2 px-5 py-3 border-t border-white/10 flex-shrink-0">
