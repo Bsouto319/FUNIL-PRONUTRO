@@ -67,9 +67,10 @@ async function safeSend(
   ).select("id");
   if (error) { console.log("safeSend error:", error.message); return false; }
   if (!data || data.length === 0) { console.log("safeSend dup:", replyKey); return false; }
-  // Anti-ban: mostra "digitando..." por 1-2s antes de enviar
+  // Anti-ban: simula digitação humana proporcional ao tamanho da mensagem
   await setPresence(phone, "composing");
-  await sleep(1000 + Math.floor(Math.random() * 1000));
+  const typingMs = Math.min(3000 + text.length * 25, 9000) + Math.floor(Math.random() * 2000);
+  await sleep(typingMs);
   await sendWa(phone, text);
   return true;
 }
