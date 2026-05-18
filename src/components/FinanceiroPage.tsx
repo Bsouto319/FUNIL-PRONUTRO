@@ -1274,17 +1274,17 @@ export default function FinanceiroPage() {
                         {t.registrado_por === "manual"     && <span className="ml-1.5 text-[9px] text-white/20 font-bold">manual</span>}
                       </td>
                       <td className="px-4 py-3 text-right text-emerald-400 font-black whitespace-nowrap">{fmt(Number(t.valor))}</td>
-                      <td className="px-2 py-3">
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                      <td className="px-2 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
                           <button onClick={() => setReciboTx(t)}
-                            className="p-1 rounded-lg hover:bg-sky-500/20 text-white/30 hover:text-sky-400 transition"
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 text-[10px] font-black transition border border-sky-500/25"
                             title="Emitir Recibo">
-                            <FileText size={12} />
+                            <FileText size={10} /> Recibo
                           </button>
                           <button onClick={() => handleDelete(t.id)} disabled={deletingId === t.id}
-                            className="p-1 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
                             title="Excluir">
-                            <Trash2 size={12} />
+                            <Trash2 size={11} />
                           </button>
                         </div>
                       </td>
