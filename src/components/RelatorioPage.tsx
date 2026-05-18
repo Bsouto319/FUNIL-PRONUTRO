@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   TrendingUp, TrendingDown, AlertTriangle, RefreshCw, Star, Target, Brain,
   Calendar, DollarSign, Activity, ChevronUp, ChevronDown, Users, Clock, Zap,
-  MessageSquare, Hash,
+  MessageSquare, Hash, PhoneCall, CheckCircle, XCircle, Bot,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
@@ -141,6 +141,7 @@ const FUNIL_STAGES = [
 export default function RelatorioPage() {
   const [period, setPeriod]         = useState<Period>("30d");
   const [stats, setStats]           = useState<any>(null);
+  const [waStats, setWaStats]       = useState<any>(null);
   const [hoje, setHoje]             = useState<any[]>([]);
   const [insight, setInsight]       = useState<any>(null);
   const [keywords, setKeywords]     = useState<{ word: string; count: number }[]>([]);
@@ -153,7 +154,7 @@ export default function RelatorioPage() {
     const { from, to, prevFrom, prevTo } = periodDates(period);
     const { from: todayFrom, to: todayTo } = todayRange();
 
-    const [agRes, prevAgRes, finRes, prevFinRes, leadsRes, hojeRes, insightRes, msgRes] = await Promise.all([
+    const [agRes, prevAgRes, finRes, prevFinRes, leadsRes, hojeRes, insightRes, msgRes, waMsgRes] = await Promise.all([
       supabase.from("pn_agendamentos")
         .select("status, tipo_consulta, nome_paciente, medico:pn_medicos(nome, valor, cor), lead:pn_leads(name, phone)")
         .gte("data_hora", from).lte("data_hora", to),
@@ -176,12 +177,16 @@ export default function RelatorioPage() {
         .order("data_hora", { ascending: true }),
       supabase.from("pn_insights")
         .select("*").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      // Mensagens inbound no período para extração de palavras-chave
       supabase.from("pn_mensagens")
         .select("body")
         .eq("direction", "in")
         .gte("created_at", from).lte("created_at", to)
         .limit(600),
+      // Todas as mensagens do período para métricas de WhatsApp
+      supabase.from("pn_mensagens")
+        .select("direction, sender_nome, created_at, lead_id")
+        .gte("created_at", from).lte("created_at", to)
+        .limit(3000),
     ]);
 
     const ags      = agRes.data      || [];
@@ -255,6 +260,52 @@ export default function RelatorioPage() {
     // Palavras-chave das conversas
     const kw = extractKeywords(msgs.map((m: any) => m.body || ""));
     setKeywords(kw);
+
+    // ── WhatsApp operacional ───────────────────────────────────────────────
+    const waMsgs = waMsgRes.data || [];
+    if (waMsgs.length > 0) {
+      // Horas em horário de Brasília (UTC-3)
+      const hourMap: Record<number, { in: number; out: number }> = {};
+      for (let h = 0; h < 24; h++) hourMap[h] = { in: 0, out: 0 };
+      const senderMap: Record<string, number> = {};
+      let totalIn = 0, totalOut = 0;
+      const leadsComMsg     = new Set<string>();
+      const leadsComResposta = new Set<string>();
+
+      for (const m of waMsgs) {
+        const d = new Date(m.created_at);
+        const h = ((d.getUTCHours() - 3) + 24) % 24;
+        if (m.direction === "in") {
+          hourMap[h].in++;
+          totalIn++;
+          if (m.lead_id) leadsComMsg.add(m.lead_id);
+        } else {
+          hourMap[h].out++;
+          totalOut++;
+          if (m.lead_id) leadsComResposta.add(m.lead_id);
+          const sender = m.sender_nome || "Clínica";
+          senderMap[sender] = (senderMap[sender] || 0) + 1;
+        }
+      }
+
+      const semResposta  = [...leadsComMsg].filter(id => !leadsComResposta.has(id)).length;
+      const pctResposta  = leadsComMsg.size > 0 ? Math.round(leadsComResposta.size / leadsComMsg.size * 100) : 0;
+      const mariaOut     = senderMap["Maria IA"] || 0;
+      const humanOut     = totalOut - mariaOut;
+      const pctMaria     = totalOut > 0 ? Math.round(mariaOut / totalOut * 100) : 0;
+      const peakIn       = Math.max(...Object.values(hourMap).map(h => h.in), 1);
+      const peakHour     = Object.entries(hourMap).sort((a, b) => b[1].in - a[1].in)[0];
+
+      setWaStats({
+        totalIn, totalOut, semResposta, pctResposta,
+        mariaOut, humanOut, pctMaria,
+        senderMap, hourMap, peakIn, peakHour,
+        leadsAtivos: leadsComMsg.size,
+        leadsRespondidos: leadsComResposta.size,
+      });
+    } else {
+      setWaStats(null);
+    }
 
     setStats({
       receita, deltaReceita, totalAgs, confirmados, realizados,
@@ -656,6 +707,177 @@ export default function RelatorioPage() {
               <div>
                 <p className="text-white/40 text-sm font-bold">Análise GPT não gerada ainda</p>
                 <p className="text-white/20 text-xs mt-0.5">Clique em "Análise GPT" para o GPT-4o gerar um briefing executivo completo com score de saúde e recomendações.</p>
+              </div>
+            </div>
+          )}
+
+          {/* WhatsApp — Demanda Operacional ────────────────────────────── */}
+          {waStats && (
+            <div className="space-y-4">
+
+              {/* Título da seção */}
+              <div className="flex items-center gap-2 pt-2">
+                <PhoneCall size={14} className="text-emerald-400" />
+                <span className="text-white font-black text-sm uppercase tracking-widest">WhatsApp — Demanda Operacional</span>
+                <div className="flex-1 h-px bg-white/8 ml-2" />
+                <span className="text-white/20 text-[10px]">{periodoLabel}</span>
+              </div>
+
+              {/* KPIs WhatsApp */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center mb-3 shadow-lg">
+                    <MessageSquare size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.totalIn}</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Msgs Recebidas</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.totalOut} respondidas</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-3 shadow-lg">
+                    <CheckCircle size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.pctResposta}%</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Leads Respondidos</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.leadsRespondidos} de {waStats.leadsAtivos}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 shadow-lg ${waStats.semResposta > 10 ? "from-rose-500 to-red-600" : "from-amber-500 to-orange-500"}`}>
+                    <XCircle size={15} className="text-white" />
+                  </div>
+                  <p className={`font-black text-2xl leading-none ${waStats.semResposta > 10 ? "text-rose-400" : "text-amber-400"}`}>{waStats.semResposta}</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Sem Retorno</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">leads sem nenhuma resposta</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-3 shadow-lg">
+                    <Bot size={15} className="text-white" />
+                  </div>
+                  <p className="text-white font-black text-2xl leading-none">{waStats.pctMaria}%</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">Maria IA</p>
+                  <p className="text-white/25 text-[10px] mt-0.5">{waStats.mariaOut} msgs · {waStats.humanOut} manual</p>
+                </div>
+              </div>
+
+              {/* Demanda por hora */}
+              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock size={13} className="text-sky-400" />
+                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Demanda por Horário</span>
+                  <span className="text-white/20 text-[10px] ml-auto">Horário de Brasília</span>
+                </div>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="flex items-center gap-1 text-[10px] text-sky-300/60"><span className="w-3 h-2 rounded-sm bg-sky-500/60 inline-block" /> Pacientes</span>
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-300/60"><span className="w-3 h-2 rounded-sm bg-emerald-500/60 inline-block" /> Equipe</span>
+                  <span className="flex items-center gap-1 text-[10px] text-rose-300/60"><span className="w-3 h-2 rounded-sm bg-rose-500/60 inline-block" /> Sem cobertura</span>
+                </div>
+                {/* Barras por hora — só mostra horas com atividade ou horário comercial */}
+                <div className="space-y-1.5 overflow-y-auto max-h-80">
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const d = waStats.hourMap[h];
+                    if (!d || (d.in === 0 && d.out === 0)) return null;
+                    const inPct  = Math.round(d.in  / waStats.peakIn * 100);
+                    const outPct = Math.round(d.out / waStats.peakIn * 100);
+                    const semCobertura = d.in > 0 && d.out === 0;
+                    const gap = d.in > 0 && d.out < d.in * 0.5;
+                    const hora = `${String(h).padStart(2, "0")}h`;
+                    return (
+                      <div key={h} className="flex items-center gap-2">
+                        <span className="text-white/30 text-[10px] font-mono w-6 shrink-0">{hora}</span>
+                        <div className="flex-1 space-y-0.5">
+                          {/* Barra pacientes */}
+                          <div className="h-3 rounded-sm overflow-hidden bg-white/5 flex items-center">
+                            <div
+                              className="h-full rounded-sm transition-all duration-700 flex items-center px-1.5"
+                              style={{ width: `${Math.max(inPct, 2)}%`, backgroundColor: semCobertura ? "rgba(239,68,68,0.5)" : "rgba(14,165,233,0.5)" }}
+                            >
+                              {d.in >= 5 && <span className="text-white text-[8px] font-black whitespace-nowrap">{d.in}</span>}
+                            </div>
+                          </div>
+                          {/* Barra equipe */}
+                          <div className="h-3 rounded-sm overflow-hidden bg-white/5 flex items-center">
+                            <div
+                              className="h-full rounded-sm transition-all duration-700 flex items-center px-1.5"
+                              style={{ width: `${Math.max(outPct, d.out > 0 ? 2 : 0)}%`, backgroundColor: "rgba(16,185,129,0.5)" }}
+                            >
+                              {d.out >= 5 && <span className="text-white text-[8px] font-black whitespace-nowrap">{d.out}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="shrink-0 w-20 text-right">
+                          {semCobertura && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">SEM COB.</span>
+                          )}
+                          {gap && !semCobertura && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">GAP</span>
+                          )}
+                          {!semCobertura && !gap && d.in > 0 && (
+                            <span className="text-[9px] text-white/20 font-mono">{d.in}/{d.out}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Cobertura: Maria vs Manual */}
+              <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Bot size={13} className="text-violet-400" />
+                  <span className="text-white/60 text-xs font-black uppercase tracking-wider">Quem Atendeu</span>
+                  <span className="text-white/20 text-[10px] ml-auto">{waStats.totalOut} mensagens enviadas</span>
+                </div>
+
+                {/* Barra de cobertura Maria vs Manual */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-[10px] font-bold mb-1.5">
+                    <span className="text-violet-400">🤖 Maria IA — {waStats.pctMaria}%</span>
+                    <span className="text-emerald-400">💬 Equipe Manual — {100 - waStats.pctMaria}%</span>
+                  </div>
+                  <div className="h-4 rounded-full overflow-hidden bg-white/5 flex">
+                    <div className="h-full bg-gradient-to-r from-violet-600 to-purple-500 transition-all duration-700 flex items-center justify-center"
+                      style={{ width: `${waStats.pctMaria}%` }}>
+                      {waStats.pctMaria >= 10 && <span className="text-white text-[9px] font-black">{waStats.pctMaria}%</span>}
+                    </div>
+                    <div className="h-full bg-gradient-to-r from-emerald-600 to-teal-500 flex-1 flex items-center justify-center">
+                      <span className="text-white text-[9px] font-black">{100 - waStats.pctMaria}%</span>
+                    </div>
+                  </div>
+                  <p className="text-white/20 text-[10px] mt-1.5">
+                    {waStats.pctMaria < 30
+                      ? "⚠ Equipe sobrecarregada — Maria está cobrindo menos de 30% do atendimento"
+                      : waStats.pctMaria < 60
+                      ? "Maria cobre parte do atendimento — há espaço para expandir a automação"
+                      : "Boa cobertura automatizada"}
+                  </p>
+                </div>
+
+                {/* Por atendente */}
+                <div className="space-y-2 border-t border-white/8 pt-3">
+                  {Object.entries(waStats.senderMap as Record<string, number>)
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .map(([nome, total]) => {
+                      const pct = waStats.totalOut > 0 ? Math.round((total as number) / waStats.totalOut * 100) : 0;
+                      const isMaria = nome === "Maria IA";
+                      return (
+                        <div key={nome} className="flex items-center gap-3">
+                          <span className={`text-[10px] font-bold w-28 truncate shrink-0 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
+                            {isMaria ? "🤖" : "💬"} {nome}
+                          </span>
+                          <div className="flex-1 h-3 rounded-full overflow-hidden bg-white/5">
+                            <div className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${Math.max(pct, 2)}%`,
+                                background: isMaria ? "rgba(139,92,246,0.6)" : "rgba(16,185,129,0.6)",
+                              }} />
+                          </div>
+                          <span className="text-white/40 text-[10px] font-mono w-12 text-right shrink-0">{total as number} msg</span>
+                          <span className="text-white/20 text-[10px] w-8 text-right shrink-0">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             </div>
           )}
