@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, Sparkles, AlertTriangle, Filter, ChevronDown } from "lucide-react";
+import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle } from "lucide-react";
 import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal } from "../lib/api";
 
 function fmt(val: number) {
@@ -455,9 +455,7 @@ export default function FinanceiroPage() {
   const [valorMax, setValorMax]         = useState("");
   const [formaFiltro, setFormaFiltro]   = useState("");
   const [somenteIncompletos, setSomenteIncompletos] = useState(false);
-  const [gptQuery, setGptQuery]         = useState("");
   const [gptResult, setGptResult]       = useState<ReturnType<typeof parseSmartQuery> | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading]           = useState(true);
 
   // Manual entry modal
@@ -565,7 +563,10 @@ export default function FinanceiroPage() {
     } else if (textSearch) {
       const q = norm(textSearch);
       result = result.filter(t =>
-        norm(t.nome_paciente || "").includes(q) || norm(t.medico_nome || "").includes(q) || norm(t.observacoes || "").includes(q)
+        norm(t.nome_paciente    || "").includes(q) ||
+        norm(t.medico_nome      || "").includes(q) ||
+        norm(t.observacoes      || "").includes(q) ||
+        norm(t.forma_pagamento  || "").includes(q)
       );
     }
 
@@ -642,6 +643,24 @@ export default function FinanceiroPage() {
   }
 
   // ── Export CSV ────────────────────────────────────────────────────────────
+
+  function handleSmartSearch() {
+    const q = busca.trim();
+    if (!q) return;
+    const parsed = parseSmartQuery(q);
+    const hasSmart = parsed.valorMin != null || parsed.valorMax != null || parsed.forma || parsed.incompletos;
+    if (hasSmart || parsed.mes || parsed.ano) {
+      setGptResult(parsed);
+      if (parsed.mes && parsed.ano) {
+        setMesAno(`${parsed.ano}-${String(parsed.mes).padStart(2, "0")}`);
+        setPeriodoMode("mes_especifico");
+      } else if (parsed.mes) {
+        setPeriodoMode("tudo");
+      } else if (!parsed.mes && !parsed.ano) {
+        setPeriodoMode("tudo");
+      }
+    }
+  }
 
   function exportCSV() {
     const headers = ["Data", "Paciente", "Médico", "Forma", "Bandeira", "Parcelas", "Valor", "Obs"];
@@ -863,30 +882,30 @@ export default function FinanceiroPage() {
           </div>
         )}
 
-        {/* Row 3: search + filters */}
+        {/* Row 3: unified search + filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Smart search */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Sparkles size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-violet-400 pointer-events-none" />
-            <input value={gptQuery}
-              onChange={e => { setGptQuery(e.target.value); if (!e.target.value.trim()) setGptResult(null); }}
-              onKeyDown={e => { if (e.key === "Enter" && gptQuery.trim()) { setGptResult(parseSmartQuery(gptQuery)); setBusca(""); } }}
-              placeholder='Busca inteligente: "pix acima de 500 em março" ↵'
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/50" />
-            {gptResult && (
-              <button onClick={() => { setGptResult(null); setGptQuery(""); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/80 transition">
-                <X size={11} />
-              </button>
-            )}
-          </div>
 
-          {/* Text search */}
-          <div className="relative">
+          {/* Unified search bar */}
+          <div className="relative flex-1 min-w-[260px]">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-            <input value={busca} onChange={e => { setBusca(e.target.value); if (e.target.value) setGptResult(null); }}
-              placeholder="Paciente / médico..."
-              className="pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 w-40" />
+            <input
+              value={busca}
+              onChange={e => { setBusca(e.target.value); if (gptResult && !e.target.value.trim()) setGptResult(null); }}
+              onKeyDown={e => { if (e.key === "Enter") handleSmartSearch(); }}
+              placeholder='Paciente, pix, "acima de 500 em março"... ↵'
+              className={`w-full pl-8 pr-16 py-1.5 rounded-lg border text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 transition ${gptResult ? "bg-violet-500/10 border-violet-500/35 focus:ring-violet-500/50" : "bg-white/5 border-white/10 focus:ring-emerald-500/40"}`}
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              {busca && (
+                <button onClick={() => { setBusca(""); setGptResult(null); }} className="text-white/25 hover:text-white/60 transition">
+                  <X size={10} />
+                </button>
+              )}
+              <button onClick={handleSmartSearch} title="Busca inteligente (Enter)"
+                className={`text-[10px] transition ${gptResult ? "text-violet-400" : "text-white/20 hover:text-white/50"}`}>
+                🤖
+              </button>
+            </div>
           </div>
 
           {/* Médico */}
@@ -922,11 +941,14 @@ export default function FinanceiroPage() {
           <span className="text-white/30 text-xs ml-auto">{filtered.length} reg.</span>
         </div>
 
-        {/* Smart search result label */}
+        {/* AI filter active label */}
         {gptResult && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20">
-            <Sparkles size={11} className="text-violet-400 shrink-0" />
-            <span className="text-violet-300 text-xs">{gptResult.descricao}</span>
+            <span className="text-[11px]">🤖</span>
+            <span className="text-violet-300 text-xs font-semibold">{gptResult.descricao}</span>
+            <button onClick={() => { setGptResult(null); setBusca(""); }} className="ml-auto text-white/25 hover:text-white/60 transition">
+              <X size={11} />
+            </button>
           </div>
         )}
       </div>
