@@ -4,7 +4,6 @@ import {
   fetchLeads, fetchMedicos,
   fetchProntuarios, upsertProntuario,
   fetchDocumentos, insertDocumento, marcarDocumentoEnviado,
-  sendDirectWhatsApp,
 } from "../lib/api";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -171,7 +170,6 @@ export default function ProntuarioPage() {
   // WhatsApp send modal
   const [sendingDoc, setSendingDoc]         = useState<any | null>(null);
   const [sendPhone, setSendPhone]           = useState("");
-  const [sendingWA, setSendingWA]           = useState(false);
   const [sentWA, setSentWA]                 = useState(false);
 
   const loadLeads = useCallback(async (q = "") => {
@@ -287,8 +285,7 @@ export default function ProntuarioPage() {
   async function handleSendWA() {
     if (!sendingDoc) return;
     const p = sendPhone.replace(/\D/g, "");
-    if (p.length < 10) return alert("Informe um telefone válido.");
-    setSendingWA(true);
+    if (p.length < 10) return alert("Informe o número com DDD e código do país.\nEx: 5561999998888");
     const tipo = docLabel(sendingDoc.tipo);
     const data = fmtDate(sendingDoc.created_at);
     let text = `*${tipo.toUpperCase()} - ProNutro Clínica*\n\n` +
@@ -301,17 +298,16 @@ export default function ProntuarioPage() {
       text += "\n\n";
     }
     text += `*Conteúdo:*\n${sendingDoc.conteudo}\n\n_ProNutro Clínica · Brasília-DF_`;
-    const ok = await sendDirectWhatsApp(p, text);
-    if (ok) {
-      await marcarDocumentoEnviado(sendingDoc.id, p);
-      const docs = await fetchDocumentos(sendingDoc.prontuario_id);
-      setProntDocs(prev => ({ ...prev, [sendingDoc.prontuario_id]: docs }));
-      setSentWA(true);
-      setTimeout(() => { setSendingDoc(null); setSentWA(false); }, 1500);
-    } else {
-      alert("Erro ao enviar. Verifique o número.");
-    }
-    setSendingWA(false);
+
+    // Abre WhatsApp Web com texto pronto — sempre funciona
+    window.open(`https://wa.me/${p}?text=${encodeURIComponent(text)}`, "_blank");
+
+    // Marca como enviado no banco
+    await marcarDocumentoEnviado(sendingDoc.id, p);
+    const docs = await fetchDocumentos(sendingDoc.prontuario_id);
+    setProntDocs(prev => ({ ...prev, [sendingDoc.prontuario_id]: docs }));
+    setSentWA(true);
+    setTimeout(() => { setSendingDoc(null); setSentWA(false); }, 1500);
   }
 
   const filtered = leads.filter(l =>
@@ -664,9 +660,9 @@ export default function ProntuarioPage() {
                     className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 text-xs font-bold transition">
                     Cancelar
                   </button>
-                  <button onClick={handleSendWA} disabled={sendingWA}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition disabled:opacity-60">
-                    {sendingWA ? "Enviando..." : <><Send size={12} /> Enviar</>}
+                  <button onClick={handleSendWA}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition">
+                    <Send size={12} /> Abrir WhatsApp
                   </button>
                 </div>
               )}

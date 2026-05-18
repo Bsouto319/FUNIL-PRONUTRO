@@ -486,10 +486,23 @@ function gerarHTMLRecibo(tx: any): string {
 </body></html>`;
 }
 
+function buildReciboText(tx: any): string {
+  const data  = tx.data_pagamento ? new Date(tx.data_pagamento).toLocaleDateString("pt-BR") : "—";
+  const valor = Number(tx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const num   = (tx.id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+  return `*RECIBO DE PAGAMENTO - ProNutro*\n\n` +
+    `Nº: ${num}\n` +
+    `Paciente: ${tx.nome_paciente || "—"}\n` +
+    `Profissional: ${(tx.medico_nome || "—").replace(/^(Dr\.|Dra\.) /,"")}\n` +
+    `Serviço: Consulta de Nutrição\n` +
+    `Data: ${data}\n` +
+    `Forma: ${tx.forma_pagamento || "—"}${tx.bandeira ? " · " + tx.bandeira : ""}${tx.parcelas > 1 ? " · " + tx.parcelas + "x" : ""}\n` +
+    `*Valor: ${valor}*\n\n` +
+    `_Este comprovante confirma o recebimento do pagamento._`;
+}
+
 function ReciboModal({ tx, onClose }: { tx: any; onClose: () => void }) {
   const [phone, setPhone] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
 
   function handlePrint() {
     const win = window.open("", "_blank");
@@ -500,26 +513,11 @@ function ReciboModal({ tx, onClose }: { tx: any; onClose: () => void }) {
     win.print();
   }
 
-  async function handleWhatsApp() {
+  function handleWhatsApp() {
     const p = phone.replace(/\D/g, "");
-    if (p.length < 10) return alert("Informe um telefone válido.");
-    setSending(true);
-    const data = tx.data_pagamento ? new Date(tx.data_pagamento).toLocaleDateString("pt-BR") : "—";
-    const valor = Number(tx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    const num = (tx.id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
-    const text = `*RECIBO DE PAGAMENTO - ProNutro*\n\n` +
-      `Nº: ${num}\n` +
-      `Paciente: ${tx.nome_paciente || "—"}\n` +
-      `Profissional: ${(tx.medico_nome || "—").replace(/^(Dr\.|Dra\.) /,"")}\n` +
-      `Serviço: Consulta de Nutrição\n` +
-      `Data: ${data}\n` +
-      `Forma: ${tx.forma_pagamento || "—"}${tx.bandeira ? " · " + tx.bandeira : ""}${tx.parcelas > 1 ? " · " + tx.parcelas + "x" : ""}\n` +
-      `*Valor: ${valor}*\n\n` +
-      `_Este comprovante confirma o recebimento do pagamento._`;
-    const ok = await sendDirectWhatsApp(p, text);
-    setSending(false);
-    if (ok) setSent(true);
-    else alert("Erro ao enviar. Verifique o número e tente novamente.");
+    if (p.length < 10) return alert("Informe o número com DDD e código do país.\nEx: 5561999998888");
+    const text = buildReciboText(tx);
+    window.open(`https://wa.me/${p}?text=${encodeURIComponent(text)}`, "_blank");
   }
 
   return (
@@ -557,22 +555,23 @@ function ReciboModal({ tx, onClose }: { tx: any; onClose: () => void }) {
           </div>
         </div>
 
-        {/* WhatsApp send */}
-        <div className="px-5 pb-2">
-          <p className="text-white/40 text-[10px] font-bold mb-1.5">ENVIAR POR WHATSAPP</p>
+        {/* WhatsApp — abre wa.me com texto pronto */}
+        <div className="px-5 pb-2 space-y-2">
+          <p className="text-white/40 text-[10px] font-bold">ENVIAR RECIBO POR WHATSAPP</p>
           <div className="flex gap-2">
             <input
               value={phone} onChange={e => setPhone(e.target.value)}
-              placeholder="5561999998888"
-              className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+              placeholder="5561999998888  (55 + DDD + número)"
+              className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             />
             <button
-              onClick={handleWhatsApp} disabled={sending || sent}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition ${sent ? "bg-emerald-600 text-white" : "bg-emerald-600/80 hover:bg-emerald-600 text-white"} disabled:opacity-60`}
+              onClick={handleWhatsApp}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-lg shadow-emerald-500/30"
             >
-              {sent ? "✓ Enviado" : sending ? "..." : <><Send size={12} /> Enviar</>}
+              <Send size={12} /> Abrir WhatsApp
             </button>
           </div>
+          <p className="text-white/20 text-[10px]">Abre o WhatsApp com o recibo pronto para enviar — basta clicar em enviar lá.</p>
         </div>
 
         {/* Actions */}
