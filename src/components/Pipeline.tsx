@@ -181,8 +181,15 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
           </div>
         </div>
 
-        {/* Phone */}
-        <p className="text-[10px] text-white/35 font-mono mb-1.5">+{lead.phone}</p>
+        {/* Phone + prontuário */}
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <p className="text-[10px] text-white/35 font-mono">+{lead.phone}</p>
+          {lead.numero_prontuario && (
+            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/40">
+              #{String(lead.numero_prontuario).padStart(3, "0")}
+            </span>
+          )}
+        </div>
 
         {/* GPT Summary */}
         {lead.summary ? (

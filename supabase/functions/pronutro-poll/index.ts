@@ -12,8 +12,8 @@ const db    = createClient(SUPABASE_URL, SUPABASE_KEY);
 const toMs  = (ts: number) => ts > 0 && ts < 1e12 ? ts * 1000 : ts;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-const PROTECTED_STAGES = ["perdido"];
-const VALID_STAGES     = ["novo_lead", "maria_ia", "interesse_real", "agendado", "perdido"];
+const PROTECTED_STAGES = ["agendado", "resolvido", "financeiro"];
+const VALID_STAGES     = ["novo_lead", "em_atendimento", "conversando", "aguardando", "agendado", "resolvido", "financeiro"];
 
 
 // ── Lock (igual ao SellPilot) ─────────────────────────────────────────────────
@@ -205,11 +205,11 @@ Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Qu
 ## REGRAS ABSOLUTAS
 - NUNCA diga "não entendi" — sempre interprete e redirecione
 - NUNCA invente horários disponíveis
-- Só use action:"perdido" se paciente pedir humano explicitamente OU após 5+ mensagens sem progresso
+- Só use action:"handoff" se paciente pedir humano explicitamente OU após 5+ mensagens sem progresso
 - Sempre ofereça falar com humano se o paciente parecer insatisfeito
 
 ## RESPOSTA (sempre JSON):
-{"message":"texto","stage":"novo_lead|maria_ia|interesse_real|agendado|perdido","action":"none|criar_agendamento|perdido","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação ou null","medico_preferido":"nome ou null"}`;
+{"message":"texto","stage":"novo_lead|em_atendimento|conversando|aguardando","action":"none|criar_agendamento|handoff","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação ou null","medico_preferido":"nome ou null"}`;
 
 // ── Criar agendamento ─────────────────────────────────────────────────────────
 async function criarAgendamento(leadId: string, medicoNome: string, dataHora: string): Promise<void> {
@@ -287,8 +287,8 @@ ${isGreeting
     if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
       await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora);
     }
-    if (parsed.action === "perdido") {
-      await db.from("pn_leads").update({ stage: "perdido", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
+    if (parsed.action === "handoff" || parsed.action === "perdido") {
+      await db.from("pn_leads").update({ stage: "aguardando", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
     }
     return;
   }
@@ -356,8 +356,8 @@ ${isGreeting
   if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
     await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora);
   }
-  if (parsed.action === "perdido") {
-    await db.from("pn_leads").update({ stage: "perdido", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
+  if (parsed.action === "handoff" || parsed.action === "perdido") {
+    await db.from("pn_leads").update({ stage: "aguardando", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
   }
 }
 
@@ -398,7 +398,7 @@ async function runPoll() {
         (m.text || m.content?.text || m.body);
     });
 
-    console.log(`pronutro-poll v23: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
+    console.log(`pronutro-poll v27: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
 
     if (!newMsgs.length) {
       await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
@@ -473,15 +473,24 @@ async function runPoll() {
       };
       if (senderName) upsertData.whatsapp_name = senderName;
 
+      // Estágios "ativos" — lead já está visível no Kanban, não precisa reativar
+      const ACTIVE_STAGES = ["em_atendimento", "aguardando", "agendado"];
+
       let lead: any;
       if (isNew) {
-        upsertData.stage         = "novo_lead";
+        // Novo contato → direto para "em_atendimento" (fila de atendimento)
+        upsertData.stage         = "em_atendimento";
         upsertData.first_message = firstBody.slice(0, 500);
         upsertData.ai_mode       = mariaActive;
         upsertData.name          = senderName || null;
         const { data: newLead } = await db.from("pn_leads").insert(upsertData).select("*").single();
         lead = newLead;
       } else {
+        // Lead existente em estágio inativo/fechado → reativa para "em_atendimento"
+        if (!ACTIVE_STAGES.includes(existingLead.stage)) {
+          upsertData.stage = "em_atendimento";
+          console.log(`Reativando ${phone}: ${existingLead.stage} → em_atendimento`);
+        }
         await db.from("pn_leads").update(upsertData).eq("id", existingLead.id);
         lead = { ...existingLead, ...upsertData };
       }

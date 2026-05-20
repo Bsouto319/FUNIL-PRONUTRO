@@ -87,8 +87,11 @@ export default function AgendaPage({
   const [apptSearch,  setApptSearch]  = useState("");
   const [apptLeads,   setApptLeads]   = useState<any[]>([]);
   const [apptLead,    setApptLead]    = useState<any | null>(null);
-  const [apptDuracao, setApptDuracao] = useState("30");
-  const [apptSaving,  setApptSaving]  = useState(false);
+  const [apptDuracao,    setApptDuracao]    = useState("30");
+  const [apptIndicacao,  setApptIndicacao]  = useState("");
+  const [apptTipo,       setApptTipo]       = useState("");
+  const [apptValor,      setApptValor]      = useState("");
+  const [apptSaving,     setApptSaving]     = useState(false);
   const apptSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load() {
@@ -236,13 +239,17 @@ export default function AgendaPage({
     if (!newAppt || !apptLead) return;
     setApptSaving(true);
     await createAgendamento({
-      lead_id:     apptLead.id,
-      medico_id:   newAppt.medicoId,
-      data_hora:   newAppt.dataHora,
-      duracao_min: parseInt(apptDuracao),
+      lead_id:          apptLead.id,
+      medico_id:        newAppt.medicoId,
+      data_hora:        newAppt.dataHora,
+      duracao_min:      parseInt(apptDuracao),
+      indicacao:        apptIndicacao || undefined,
+      tipo_procedimento: apptTipo || undefined,
+      valor_procedimento: apptValor ? parseFloat(apptValor.replace(",", ".")) : undefined,
     });
     setApptSaving(false);
     setNewAppt(null);
+    setApptIndicacao(""); setApptTipo(""); setApptValor("");
     load();
   }
 
@@ -655,6 +662,30 @@ export default function AgendaPage({
                         {d}min
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Indicação */}
+                <div>
+                  <p className="text-white/40 text-[10px] font-bold uppercase mb-1.5">📣 Indicação / Captação</p>
+                  <input value={apptIndicacao} onChange={e => setApptIndicacao(e.target.value)}
+                    placeholder="Ex: Dra. Vanessa, Instagram, indicação..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                </div>
+
+                {/* Tipo de procedimento + valor */}
+                <div>
+                  <p className="text-white/40 text-[10px] font-bold uppercase mb-1.5">🔬 Procedimento</p>
+                  <div className="flex gap-2">
+                    <input value={apptTipo} onChange={e => setApptTipo(e.target.value)}
+                      placeholder="Tipo de procedimento"
+                      className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                    <div className="relative w-28">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs">R$</span>
+                      <input value={apptValor} onChange={e => setApptValor(e.target.value)}
+                        placeholder="0,00"
+                        className="w-full pl-7 pr-2 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                    </div>
                   </div>
                 </div>
 

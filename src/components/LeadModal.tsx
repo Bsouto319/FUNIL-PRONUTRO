@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Receipt, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
@@ -38,7 +38,8 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [slot, setSlot]           = useState("");
   const [agendando, setAgendando]   = useState(false);
   const [agendadoOk, setAgendadoOk] = useState(false);
-  const [origem, setOrigem]         = useState("");
+  const [agendIndicacao, setAgendIndicacao] = useState("");
+  const [agendTipo,      setAgendTipo]      = useState("");
   const [horaManual, setHoraManual] = useState("");
   const [agendadoErr, setAgendadoErr] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -260,12 +261,12 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     if (!medicoId || !data || !horario) return;
     setAgendando(true);
     setAgendadoErr("");
-    const obs = origem ? `Origem: ${origem}` : undefined;
     const ag = await createAgendamento({
       lead_id: lead.id,
       medico_id: medicoId,
       data_hora: `${data}T${horario}:00`,
-      observacoes: obs,
+      indicacao: agendIndicacao || undefined,
+      tipo_procedimento: agendTipo || undefined,
     });
     if (ag) {
       await updateLeadStage(lead.id, "agendado");
@@ -371,7 +372,14 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
             {name[0]?.toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-black">{name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white font-black">{name}</p>
+              {lead.numero_prontuario && (
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  #{String(lead.numero_prontuario).padStart(3, "0")}
+                </span>
+              )}
+            </div>
             <p className="text-white/40 text-xs font-mono">{lead.phone}</p>
           </div>
           <div className="relative">
@@ -716,18 +724,20 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               {!horaManual && <p className="text-white/25 text-[10px] mt-1">Selecione acima ou digite o horário</p>}
             </div>
 
-            {/* Por onde veio */}
+            {/* Indicação */}
             <div>
-              <label className="block text-white/60 text-xs font-bold mb-1.5">Por onde veio</label>
-              <div className="grid grid-cols-3 gap-2">
-                {["WhatsApp", "Google", "Instagram", "Facebook", "Indicação", "Doctoralia", "TikTok", "Outro"].map(op => (
-                  <button key={op} onClick={() => setOrigem(origem === op ? "" : op)}
-                    className={`py-2 px-3 rounded-lg text-[11px] font-bold border transition text-left ${origem === op ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
-                    {op === "WhatsApp" ? "📱 " : op === "Google" ? "🔍 " : op === "Instagram" ? "📸 " : op === "Facebook" ? "👥 " : op === "Indicação" ? "🤝 " : op === "Doctoralia" ? "🏥 " : op === "TikTok" ? "🎵 " : "❓ "}
-                    {op}
-                  </button>
-                ))}
-              </div>
+              <label className="block text-white/60 text-xs font-bold mb-1.5">📣 Indicação / Captação</label>
+              <input value={agendIndicacao} onChange={e => setAgendIndicacao(e.target.value)}
+                placeholder="Ex: Dra. Vanessa, Instagram, Doctoralia..."
+                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+            </div>
+
+            {/* Tipo de procedimento */}
+            <div>
+              <label className="block text-white/60 text-xs font-bold mb-1.5">🔬 Tipo de procedimento</label>
+              <input value={agendTipo} onChange={e => setAgendTipo(e.target.value)}
+                placeholder="Ex: Consulta inicial, Retorno, Avaliação corporal..."
+                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
             </div>
 
             {/* Botão confirmar — SEMPRE visível */}
@@ -741,7 +751,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                 ? "⏳ Agendando..."
                 : (!medicoId || !data || !horaManual)
                 ? `Preencha ${!medicoId ? "médico" : !data ? "data" : "horário"} para confirmar`
-                : `✅ Confirmar — ${data.split("-").reverse().join("/")} às ${horaManual}${origem ? `  ·  ${origem}` : ""}`}
+                : `✅ Confirmar — ${data.split("-").reverse().join("/")} às ${horaManual}`}
             </button>
           </div>
         )}
@@ -1106,22 +1116,6 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
             placeholder="Observações internas..." rows={2}
             className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none" />
           <div className="flex flex-col gap-1 self-start">
-            {/* Botão pendência financeira */}
-            <button
-              onClick={async () => {
-                const next = !pendencia;
-                setPendencia(next);
-                await updateLeadPendencia(lead.id, next);
-              }}
-              title={pendencia ? "Remover pendência financeira" : "Marcar pendência financeira (nota fiscal / pagamento)"}
-              className={`p-2 rounded-xl border transition ${
-                pendencia
-                  ? "bg-yellow-500/25 border-yellow-500/40 text-yellow-300"
-                  : "bg-white/5 hover:bg-yellow-500/10 border-white/10 text-white/30 hover:text-yellow-400 hover:border-yellow-500/30"
-              }`}
-            >
-              <Receipt size={14} />
-            </button>
             {/* Botão deletar */}
             {!confirmDelete ? (
               <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 transition">
