@@ -82,6 +82,15 @@ export default function AgendaPage({
 
   const gridRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to current time on mount
+  useEffect(() => {
+    if (!loading && gridRef.current && selectedDay === todayStr) {
+      const now = new Date();
+      const slotFromTop = Math.max(0, (now.getHours() - DAY_START) * 2 + Math.floor(now.getMinutes() / 30) - 2);
+      gridRef.current.scrollTop = slotFromTop * SLOT_H;
+    }
+  }, [loading]);
+
   // New appointment mini-modal
   const [newAppt, setNewAppt] = useState<{ medicoId: string; medicoNome: string; dataHora: string } | null>(null);
   const [apptSearch,  setApptSearch]  = useState("");

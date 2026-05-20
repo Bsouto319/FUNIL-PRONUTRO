@@ -12,7 +12,7 @@ import PacientesPage from "./PacientesPage";
 import PacientePresencialModal from "./PacientePresencialModal";
 import EstoquePage from "./EstoquePage";
 import TeamChat from "./TeamChat";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos } from "../lib/api";
+import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin";
@@ -57,6 +57,12 @@ export default function Dashboard({ user }: { user: any }) {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [bancos, setBancos]                 = useState<any[]>([]);
   const [showPresencial, setShowPresencial] = useState(false);
+  const [showOutbound, setShowOutbound]     = useState(false);
+  const [outboundPhone, setOutboundPhone]   = useState("");
+  const [outboundName,  setOutboundName]    = useState("");
+  const [outboundText,  setOutboundText]    = useState("");
+  const [sendingOutbound, setSendingOutbound] = useState(false);
+  const [outboundErr,   setOutboundErr]     = useState("");
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -353,6 +359,37 @@ export default function Dashboard({ user }: { user: any }) {
     }
   }
 
+  async function handleSendOutbound(e: React.FormEvent) {
+    e.preventDefault();
+    setOutboundErr("");
+    const cleanPhone = outboundPhone.replace(/\D/g, "");
+    if (!cleanPhone || !outboundText.trim()) return;
+    setSendingOutbound(true);
+    // Find or create lead
+    const { data: existing } = await supabase.from("pn_leads").select("id,phone,name,whatsapp_name,stage").eq("phone", cleanPhone).maybeSingle();
+    let leadId = existing?.id;
+    if (!leadId) {
+      const { data: created, error } = await supabase.from("pn_leads").insert({
+        name: outboundName.trim() || null,
+        phone: cleanPhone,
+        stage: "em_atendimento",
+        ai_mode: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).select("id").single();
+      if (error || !created) { setOutboundErr("Erro ao criar contato."); setSendingOutbound(false); return; }
+      leadId = created.id;
+    }
+    const ok = await sendMessage(leadId, cleanPhone, outboundText.trim(), user.nome || "Atendente");
+    setSendingOutbound(false);
+    if (!ok) { setOutboundErr("Erro ao enviar mensagem. Verifique o número."); return; }
+    setShowOutbound(false);
+    setOutboundPhone(""); setOutboundName(""); setOutboundText(""); setOutboundErr("");
+    await load();
+    const { data: updatedLead } = await supabase.from("pn_leads").select("*").eq("id", leadId).single();
+    if (updatedLead) setSelected(updatedLead);
+  }
+
   const statCards = [
     { label: "Leads Hoje",  value: stats.hoje,      icon: Users,    gradient: "from-sky-500 to-blue-600",       glow: "shadow-sky-500/30"     },
     { label: "Maria IA",    value: stats.maria,     icon: Bot,      gradient: "from-violet-500 to-purple-600",  glow: "shadow-violet-500/30"  },
@@ -518,6 +555,16 @@ export default function Dashboard({ user }: { user: any }) {
               >
                 <UserPlus size={13} />
                 <span className="hidden sm:inline">Novo Paciente</span>
+              </button>
+            )}
+            {(page === "kanban" || page === "agenda") && (
+              <button
+                onClick={() => setShowOutbound(true)}
+                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-sky-600/20 hover:bg-sky-600/40 border-sky-500/30 text-sky-300 transition"
+                title="Iniciar conversa ativa com paciente pelo WhatsApp"
+              >
+                <span className="text-[13px]">💬</span>
+                <span className="hidden sm:inline">Nova Conversa</span>
               </button>
             )}
 
@@ -1084,6 +1131,60 @@ export default function Dashboard({ user }: { user: any }) {
           onClose={() => setShowPresencial(false)}
           onDone={(lead) => { setShowPresencial(false); load(); setSelected(lead); }}
         />
+      )}
+
+      {/* Modal — Nova Conversa (outbound WhatsApp) */}
+      {showOutbound && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,10,0.75)", backdropFilter: "blur(6px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowOutbound(false); }}>
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(10,18,48,0.98)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💬</span>
+                <div>
+                  <p className="text-white font-black text-sm leading-none">Nova Conversa</p>
+                  <p className="text-white/30 text-[10px] mt-0.5">Inicia conversa ativa no WhatsApp</p>
+                </div>
+              </div>
+              <button onClick={() => setShowOutbound(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 transition">
+                <X size={15} />
+              </button>
+            </div>
+            <form onSubmit={handleSendOutbound} className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Telefone (WhatsApp) *</label>
+                <input
+                  value={outboundPhone} onChange={e => setOutboundPhone(e.target.value)}
+                  placeholder="61999998888"
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                />
+              </div>
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nome (opcional)</label>
+                <input
+                  value={outboundName} onChange={e => setOutboundName(e.target.value)}
+                  placeholder="Nome do paciente"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                />
+              </div>
+              <div>
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Mensagem *</label>
+                <textarea
+                  value={outboundText} onChange={e => setOutboundText(e.target.value)}
+                  placeholder="Olá! Vi que você tem interesse em nutrição..."
+                  required rows={4}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50 resize-none"
+                />
+              </div>
+              {outboundErr && <p className="text-rose-400 text-xs font-bold">{outboundErr}</p>}
+              <button type="submit" disabled={sendingOutbound}
+                className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-black transition disabled:opacity-50">
+                {sendingOutbound ? "Enviando..." : "📲 Enviar e Abrir Conversa"}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Chat da equipe — botão flutuante */}
