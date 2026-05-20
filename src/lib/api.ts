@@ -1,12 +1,13 @@
 ﻿import { supabase } from "./supabase";
+import { setCache, getCache } from "./cache";
 
+// kanban: true = aparece como coluna no Kanban | false = só no seletor de stage
 export const STAGES = [
-  { key: "novo_lead",      label: "Novo Lead",       color: "bg-green-400/15 text-green-300",     headerBg: "#16a34a" },
-  { key: "maria_ia",       label: "Maria IA",        color: "bg-sky-400/15 text-sky-300",         headerBg: "#0284c7" },
-  { key: "interesse_real", label: "Interesse Real",  color: "bg-amber-400/15 text-amber-300",     headerBg: "#d97706" },
-  { key: "agendado",       label: "Agendado",        color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669" },
-  { key: "resolvido",      label: "Resolvido",       color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5" },
-  { key: "perdido",        label: "Perdido",         color: "bg-rose-400/15 text-rose-300",       headerBg: "#dc2626" },
+  { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: "#0284c7", kanban: true  },
+  { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: "#be185d", kanban: true  },
+  { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669", kanban: true  },
+  { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: "#ca8a04", kanban: true  },
+  { key: "resolvido",      label: "Histórico",      color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5", kanban: false },
 ];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -44,31 +45,50 @@ export async function fetchCurrentUser() {
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
 
+// Mapeia stages legados → stages atuais
+const STAGE_MAP: Record<string, string> = {
+  "interesse_real": "em_atendimento",
+  "conversando":    "em_atendimento",
+  "novo_lead":      "em_atendimento",
+  "maria_ia":       "em_atendimento",
+  "perdido":        "resolvido",
+  "inativo":        "resolvido",
+};
+
 export async function fetchLeads(search = "") {
+  const cacheKey = `leads_${search}`;
   let q = supabase
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .order("created_at", { ascending: false });
   if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
   const { data, error } = await q;
-  if (error) console.error("fetchLeads", error.message);
-  return data || [];
+  if (error || !data) {
+    console.warn("fetchLeads offline — usando cache");
+    const cached = getCache<any[]>(cacheKey);
+    return (cached || []).map((l: any) => ({ ...l, stage: STAGE_MAP[l.stage] ?? l.stage }));
+  }
+  const mapped = data.map((l: any) => ({ ...l, stage: STAGE_MAP[l.stage] ?? l.stage }));
+  setCache(cacheKey, mapped);
+  return mapped;
 }
 
 export async function fetchStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [todayRes, mariaRes, agendRes, totalRes] = await Promise.all([
     supabase.from("pn_leads").select("id", { count: "exact" }).gte("created_at", today.toISOString()),
-    supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "maria_ia"),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "em_atendimento"),
     supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "agendado"),
     supabase.from("pn_leads").select("id", { count: "exact" }),
   ]);
-  return {
-    hoje:     todayRes.count  || 0,
-    maria:    mariaRes.count  || 0,
-    agendados: agendRes.count || 0,
-    total:    totalRes.count  || 0,
+  const stats = {
+    hoje:      todayRes.count  || 0,
+    maria:     mariaRes.count  || 0,
+    agendados: agendRes.count  || 0,
+    total:     totalRes.count  || 0,
   };
+  if (stats.total > 0) setCache("stats", stats);
+  return stats.total > 0 ? stats : (getCache<typeof stats>("stats") || stats);
 }
 
 export async function updateLeadStage(id: string, stage: string) {
@@ -77,6 +97,35 @@ export async function updateLeadStage(id: string, stage: string) {
     .update({ stage, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) console.error("updateLeadStage", error.message);
+}
+
+// ── Respostas Rápidas ─────────────────────────────────────────────────────────
+
+export async function fetchQuickReplies() {
+  const { data, error } = await supabase
+    .from("pn_quick_replies")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) console.error("fetchQuickReplies", error.message);
+  return data || [];
+}
+
+export async function createQuickReply(title: string, body: string) {
+  const { error } = await supabase.from("pn_quick_replies").insert({ title, body });
+  if (error) console.error("createQuickReply", error.message);
+}
+
+export async function deleteQuickReply(id: string) {
+  const { error } = await supabase.from("pn_quick_replies").delete().eq("id", id);
+  if (error) console.error("deleteQuickReply", error.message);
+}
+
+export async function updateLeadPendencia(id: string, value: boolean) {
+  const { error } = await supabase
+    .from("pn_leads")
+    .update({ pendencia_financeira: value, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) console.error("updateLeadPendencia", error.message);
 }
 
 export async function updateLeadNotes(id: string, notes: string) {
@@ -107,6 +156,10 @@ export async function updateLeadProfile(id: string, data: {
   pagamento_metodo?: string;
   pagamento_data?: string;
   pagamento_obs?: string;
+  data_venda?: string | null;
+  bandeira_cartao?: string | null;
+  taxa_cartao?: number | null;
+  taxas_diversas?: number | null;
 }): Promise<boolean> {
   const { error } = await supabase
     .from("pn_leads")
@@ -124,13 +177,18 @@ export async function deleteLead(id: string) {
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 export async function fetchMessages(leadId: string) {
+  const cacheKey = `messages_${leadId}`;
   const { data, error } = await supabase
     .from("pn_mensagens")
     .select("*")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: true });
-  if (error) console.error("fetchMessages", error.message);
-  return data || [];
+  if (error || !data) {
+    console.warn("fetchMessages offline — usando cache");
+    return getCache<any[]>(cacheKey) || [];
+  }
+  setCache(cacheKey, data);
+  return data;
 }
 
 export async function sendMessage(leadId: string, phone: string, text: string, senderNome: string) {
@@ -156,8 +214,12 @@ export async function sendMessage(leadId: string, phone: string, text: string, s
 
 export async function fetchMedicos() {
   const { data, error } = await supabase.from("pn_medicos").select("*").eq("ativo", true).order("nome");
-  if (error) console.error("fetchMedicos", error.message);
-  return data || [];
+  if (error || !data) {
+    console.warn("fetchMedicos offline — usando cache");
+    return getCache<any[]>("medicos") || [];
+  }
+  setCache("medicos", data);
+  return data;
 }
 
 export async function upsertMedico(m: {
@@ -225,6 +287,45 @@ export async function createLead(data: {
   return !error;
 }
 
+export async function createLeadPresencial(data: {
+  name: string; phone: string; cpf?: string; email?: string; convenio?: string; observacao?: string;
+  origem?: string; data_nascimento?: string; sexo?: string;
+  cep?: string; endereco?: string; numero?: string; complemento?: string;
+  bairro?: string; cidade?: string; estado?: string;
+  pagamento_status?: string; pagamento_valor?: number;
+  pagamento_metodo?: string; pagamento_data?: string; pagamento_obs?: string;
+}): Promise<any | null> {
+  const { data: lead, error } = await supabase.from("pn_leads").insert({
+    name:             data.name,
+    phone:            data.phone.replace(/\D/g, ""),
+    stage:            "agendado",
+    ai_mode:          false,
+    cpf:              data.cpf ? data.cpf.replace(/\D/g, "") : null,
+    email:            data.email || null,
+    convenio:         data.convenio || null,
+    first_message:    data.observacao || null,
+    origem:           data.origem || "presencial",
+    data_nascimento:  data.data_nascimento || null,
+    sexo:             data.sexo || null,
+    cep:              data.cep || null,
+    endereco:         data.endereco || null,
+    numero:           data.numero || null,
+    complemento:      data.complemento || null,
+    bairro:           data.bairro || null,
+    cidade:           data.cidade || null,
+    estado:           data.estado || null,
+    pagamento_status: data.pagamento_status || null,
+    pagamento_valor:  data.pagamento_valor || null,
+    pagamento_metodo: data.pagamento_metodo || null,
+    pagamento_data:   data.pagamento_data || null,
+    pagamento_obs:    data.pagamento_obs || null,
+    created_at:       new Date().toISOString(),
+    updated_at:       new Date().toISOString(),
+  }).select().single();
+  if (error) console.error("createLeadPresencial", error.message);
+  return lead;
+}
+
 // ── Insights / Relatório ──────────────────────────────────────────────────────
 
 export async function fetchLatestInsight() {
@@ -246,17 +347,34 @@ export async function updateAgendamentoStatus(id: string, status: "confirmado" |
 
 // ── Agendamentos ──────────────────────────────────────────────────────────────
 
+export async function fetchTodayAppointedLeadIds(): Promise<string[]> {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const { data } = await supabase
+    .from("pn_agendamentos")
+    .select("lead_id")
+    .gte("data_hora", `${todayStr}T00:00:00`)
+    .lte("data_hora", `${todayStr}T23:59:59`)
+    .neq("status", "cancelado");
+  return (data || []).map((a: any) => a.lead_id as string);
+}
+
 export async function fetchAgendamentos(from?: string, to?: string) {
+  const cacheKey = `agendamentos_${from || ""}_${to || ""}`;
   let q = supabase
     .from("pn_agendamentos")
     .select("*, medico:pn_medicos(id, nome, especialidade, valor, aceita_convenio, cor), lead:pn_leads(id, name, whatsapp_name, phone)")
-    .eq("status", "confirmado")
     .order("data_hora", { ascending: true });
   if (from) q = q.gte("data_hora", from);
   if (to)   q = q.lte("data_hora", to);
   const { data, error } = await q;
-  if (error) console.error("fetchAgendamentos", error.message);
-  return data || [];
+  if (error || !data) {
+    console.warn("fetchAgendamentos offline — usando cache");
+    return getCache<any[]>(cacheKey) || [];
+  }
+  setCache(cacheKey, data);
+  return data;
 }
 
 export async function createAgendamento(payload: {
@@ -280,6 +398,31 @@ export async function createAgendamento(payload: {
 export async function cancelAgendamento(id: string) {
   const { error } = await supabase.from("pn_agendamentos").update({ status: "cancelado" }).eq("id", id);
   if (error) console.error("cancelAgendamento", error.message);
+}
+
+export type SmartCancelCandidate = {
+  lead_id: string;
+  lead_name: string;
+  phone: string;
+  reason: string;
+  message_snippet: string;
+  priority: number;
+};
+
+export async function checkSmartCancel(payload: {
+  agendamento_id: string;
+  data_hora: string;
+  medico_id: string;
+  medico_nome: string;
+}): Promise<SmartCancelCandidate[]> {
+  const { data, error } = await supabase.functions.invoke("pn-smart-cancel", { body: payload });
+  if (error) { console.error("checkSmartCancel", error); return []; }
+  return data?.candidates || [];
+}
+
+export async function updateAgendamento(id: string, updates: Record<string, any>) {
+  const { error } = await supabase.from("pn_agendamentos").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) console.error("updateAgendamento", error.message);
 }
 
 export async function fetchSlotsDisponiveis(medicoId: string, data: string) {
@@ -376,6 +519,74 @@ export async function fetchUsuarios() {
   return data || [];
 }
 
+export async function updateUsuario(id: string, fields: { nome?: string; role?: string }) {
+  const { error } = await supabase
+    .from("pn_usuarios")
+    .update(fields)
+    .eq("id", id);
+  if (error) console.error("updateUsuario", error.message);
+  return !error;
+}
+
+// ── Chat da Equipe ────────────────────────────────────────────────────────────
+
+export async function fetchChatMessages(userId1: string, userId2: string) {
+  const { data, error } = await supabase.from("pn_chat_mensagens")
+    .select("*")
+    .or(`and(remetente_id.eq.${userId1},destinatario_id.eq.${userId2}),and(remetente_id.eq.${userId2},destinatario_id.eq.${userId1})`)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) console.error("fetchChatMessages", error.message);
+  return data || [];
+}
+
+export async function sendChatMessage(remetente_id: string, destinatario_id: string, body: string) {
+  const { error } = await supabase.from("pn_chat_mensagens").insert({ remetente_id, destinatario_id, body });
+  if (error) console.error("sendChatMessage", error.message);
+  return !error;
+}
+
+export async function marcarMensagensLidas(destinatario_id: string, remetente_id: string) {
+  await supabase.from("pn_chat_mensagens")
+    .update({ lida: true })
+    .eq("destinatario_id", destinatario_id)
+    .eq("remetente_id", remetente_id)
+    .eq("lida", false);
+}
+
+export async function fetchUnreadCounts(destinatario_id: string): Promise<Record<string, number>> {
+  const { data } = await supabase.from("pn_chat_mensagens")
+    .select("remetente_id")
+    .eq("destinatario_id", destinatario_id)
+    .eq("lida", false);
+  const counts: Record<string, number> = {};
+  (data || []).forEach((m: any) => { counts[m.remetente_id] = (counts[m.remetente_id] || 0) + 1; });
+  return counts;
+}
+
+// ── Bancos ────────────────────────────────────────────────────────────────────
+
+export async function fetchBancos() {
+  const { data, error } = await supabase.from("pn_bancos").select("*").eq("ativo", true).order("nome");
+  if (error || !data) {
+    console.warn("fetchBancos offline — usando cache");
+    return getCache<any[]>("bancos") || [];
+  }
+  setCache("bancos", data);
+  return data;
+}
+
+export async function insertBanco(nome: string, tipo: string, chave_pix?: string) {
+  const { data, error } = await supabase.from("pn_bancos").insert({ nome, tipo, chave_pix: chave_pix || null }).select().single();
+  if (error) console.error("insertBanco", error.message);
+  return data;
+}
+
+export async function deleteBanco(id: string) {
+  const { error } = await supabase.from("pn_bancos").update({ ativo: false }).eq("id", id);
+  if (error) console.error("deleteBanco", error.message);
+}
+
 // ── Financeiro ────────────────────────────────────────────────────────────────
 
 export async function fetchFinanceiro({ from, to, medicoId, forma, semData }: {
@@ -402,6 +613,7 @@ export async function fetchFinanceiro({ from, to, medicoId, forma, semData }: {
 }
 
 export async function insertFinanceiro(payload: {
+  lead_id?: string;
   medico_id?: string;
   nome_paciente?: string;
   medico_nome?: string;
@@ -411,6 +623,9 @@ export async function insertFinanceiro(payload: {
   parcelas?: number;
   data_pagamento?: string;
   observacoes?: string;
+  banco_id?: string;
+  taxa_cartao?: number | null;
+  taxas_diversas?: number | null;
 }) {
   const { data, error } = await supabase.from("pn_financeiro").insert({
     ...payload,
@@ -725,6 +940,48 @@ export async function sendDirectWhatsApp(phone: string, text: string): Promise<b
   } catch { return false; }
 }
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function sendMediaWhatsApp(phone: string, file: File): Promise<boolean> {
+  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
+  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
+  try {
+    const base64   = await blobToBase64(file);
+    const isImage  = file.type.startsWith("image/");
+    const endpoint = isImage ? "/send/image" : "/send/document";
+    const body     = isImage
+      ? { number: phone, image: base64, caption: file.name }
+      : { number: phone, document: base64, fileName: file.name };
+    const res = await fetch(`${baseUrl}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function sendPttWhatsApp(phone: string, blob: Blob): Promise<boolean> {
+  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
+  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
+  try {
+    const base64 = await blobToBase64(blob);
+    const res = await fetch(`${baseUrl}/send/ptt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ number: phone, audio: base64 }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 // ── Prontuários ───────────────────────────────────────────────────────────────
 
 export async function fetchProntuarios(leadId?: string) {
@@ -782,4 +1039,85 @@ export async function marcarDocumentoEnviado(id: string, phone: string) {
   await supabase.from("pn_documentos").update({
     enviado_whatsapp: true, phone_enviado: phone, enviado_em: new Date().toISOString(),
   }).eq("id", id);
+}
+
+// ── Estoque ───────────────────────────────────────────────────────────────────
+
+export async function fetchEstoque() {
+  const { data, error } = await supabase.from("pn_estoque").select("*").eq("ativo", true).order("nome");
+  if (error) console.error("fetchEstoque", error.message);
+  return data || [];
+}
+
+export async function upsertEstoque(item: {
+  id?: string; nome: string; categoria: string; unidade: string;
+  estoque_atual: number; estoque_min: number; valor_unitario: number;
+}): Promise<boolean> {
+  if (item.id) {
+    const { error } = await supabase.from("pn_estoque")
+      .update({ nome: item.nome, categoria: item.categoria, unidade: item.unidade,
+        estoque_atual: item.estoque_atual, estoque_min: item.estoque_min,
+        valor_unitario: item.valor_unitario, updated_at: new Date().toISOString() })
+      .eq("id", item.id);
+    if (error) console.error("upsertEstoque", error.message);
+    return !error;
+  }
+  const { error } = await supabase.from("pn_estoque").insert({
+    nome: item.nome, categoria: item.categoria, unidade: item.unidade,
+    estoque_atual: item.estoque_atual, estoque_min: item.estoque_min,
+    valor_unitario: item.valor_unitario, ativo: true,
+  });
+  if (error) console.error("upsertEstoque", error.message);
+  return !error;
+}
+
+export async function desativarEstoque(id: string): Promise<boolean> {
+  const { error } = await supabase.from("pn_estoque").update({ ativo: false }).eq("id", id);
+  if (error) console.error("desativarEstoque", error.message);
+  return !error;
+}
+
+export async function fetchEstoqueMovimentos(estoqueId?: string, limitN = 50) {
+  let q = supabase.from("pn_estoque_movimentos")
+    .select("*, item:pn_estoque(nome, unidade)")
+    .order("created_at", { ascending: false })
+    .limit(limitN);
+  if (estoqueId) q = q.eq("estoque_id", estoqueId);
+  const { data, error } = await q;
+  if (error) console.error("fetchEstoqueMovimentos", error.message);
+  return data || [];
+}
+
+export async function insertEstoqueMovimento(payload: {
+  estoque_id: string;
+  tipo: "entrada" | "saida" | "ajuste" | "consumo";
+  quantidade: number;
+  valor_unit?: number;
+  obs?: string;
+  agendamento_id?: string;
+}): Promise<boolean> {
+  const { error: mvErr } = await supabase.from("pn_estoque_movimentos").insert({
+    estoque_id:     payload.estoque_id,
+    tipo:           payload.tipo,
+    quantidade:     payload.quantidade,
+    valor_unit:     payload.valor_unit   || null,
+    obs:            payload.obs          || null,
+    agendamento_id: payload.agendamento_id || null,
+  });
+  if (mvErr) { console.error("insertEstoqueMovimento", mvErr.message); return false; }
+
+  // Atualiza estoque_atual
+  const { data: item } = await supabase.from("pn_estoque").select("estoque_atual").eq("id", payload.estoque_id).single();
+  if (item) {
+    let novoEstoque: number;
+    if (payload.tipo === "ajuste") {
+      novoEstoque = payload.quantidade;
+    } else if (payload.tipo === "entrada") {
+      novoEstoque = (item.estoque_atual || 0) + payload.quantidade;
+    } else {
+      novoEstoque = Math.max(0, (item.estoque_atual || 0) - payload.quantidade);
+    }
+    await supabase.from("pn_estoque").update({ estoque_atual: novoEstoque, updated_at: new Date().toISOString() }).eq("id", payload.estoque_id);
+  }
+  return true;
 }

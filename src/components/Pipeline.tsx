@@ -7,9 +7,19 @@ interface Props {
   onSelect: (lead: any) => void;
   onToggleAi: (id: string, mode: boolean) => void;
   currentUser: any;
+  dayFilter?: string | null;
+  todayApptLeadIds?: string[];
 }
 
-const PROTECTED = ["resolvido", "perdido"];
+function isSameDay(isoDate: string, dayStr: string): boolean {
+  const d = new Date(isoDate);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${da}` === dayStr;
+}
+
+const PROTECTED = ["agendado", "resolvido", "financeiro"];
 
 function minutesSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -25,7 +35,9 @@ function formatTime(iso: string): string {
   return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hm}`;
 }
 
-export default function Pipeline({ leads, onSelect, onToggleAi }: Props) {
+const KANBAN_STAGES = STAGES.filter(s => s.kanban);
+
+export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter, todayApptLeadIds = [] }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
 
   function handleDrop(e: React.DragEvent, stage: string) {
@@ -37,16 +49,31 @@ export default function Pipeline({ leads, onSelect, onToggleAi }: Props) {
 
   return (
     <div className="h-full flex gap-2.5 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
-      {STAGES.map(({ key, label, headerBg }) => {
+      {KANBAN_STAGES.map(({ key, label, headerBg }) => {
+        const apptSet = new Set(todayApptLeadIds);
         const stageLeads = leads
           .filter(l => l.stage === key)
-          .sort((a, b) => new Date(b.last_message_at ?? b.created_at).getTime() - new Date(a.last_message_at ?? a.created_at).getTime());
+          .filter(l => {
+            if (key === "agendado") {
+              return apptSet.size === 0 ? false : apptSet.has(l.id);
+            }
+            if (!dayFilter) return true;
+            const ref = l.last_message_at ?? l.created_at;
+            return isSameDay(ref, dayFilter);
+          })
+          .sort((a, b) => {
+            // Em Atendimento: ordem de chegada (mais antigo primeiro = esperando mais)
+            if (key === "em_atendimento") {
+              return new Date(a.last_message_at ?? a.created_at).getTime() - new Date(b.last_message_at ?? b.created_at).getTime();
+            }
+            return new Date(b.last_message_at ?? b.created_at).getTime() - new Date(a.last_message_at ?? a.created_at).getTime();
+          });
 
         return (
           <div
             key={key}
             className="flex-shrink-0 flex flex-col rounded-xl overflow-hidden"
-            style={{ width: "calc((100vw - 96px - 20px) / 5)" }}
+            style={{ width: "calc((100vw - 96px - 20px) / 4)", minWidth: 220 }}
             onDragOver={e => e.preventDefault()}
             onDrop={e => handleDrop(e, key)}
           >

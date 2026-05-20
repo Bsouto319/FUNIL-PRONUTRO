@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell, CalendarDays, Volume2, VolumeX } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
@@ -7,10 +7,15 @@ import AdminPanel from "./AdminPanel";
 import FinanceiroPage from "./FinanceiroPage";
 import RelatorioPage from "./RelatorioPage";
 import ProntuarioPage from "./ProntuarioPage";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight } from "../lib/api";
+import PendenciasPage from "./PendenciasPage";
+import PacientesPage from "./PacientesPage";
+import PacientePresencialModal from "./PacientePresencialModal";
+import EstoquePage from "./EstoquePage";
+import TeamChat from "./TeamChat";
+import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, fetchTodayAppointedLeadIds } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
-type Page = "kanban" | "agenda" | "financeiro" | "relatorio" | "prontuario" | "admin";
+type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin";
 
 export default function Dashboard({ user }: { user: any }) {
   const [leads, setLeads]         = useState<any[]>([]);
@@ -22,10 +27,11 @@ export default function Dashboard({ user }: { user: any }) {
   const [mariaActive, setMariaActive] = useState(false);
   const [mariaLoading, setMariaLoading] = useState(false);
   const [page, setPage]           = useState<Page>("kanban");
+  const [financeiroPatient, setFinanceiroPatient] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState({
     name: "", phone: "", email: "", cpf: "", data_nascimento: "", sexo: "",
-    stage: "novo_lead", ai_mode: false, first_message: "",
+    stage: "em_atendimento", ai_mode: false, first_message: "",
     origem: "",
     cep: "", endereco: "", numero: "", complemento: "", bairro: "", cidade: "", estado: "",
     convenio: "",
@@ -37,6 +43,8 @@ export default function Dashboard({ user }: { user: any }) {
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
   const [filterHoje, setFilterHoje]       = useState(false);
+  const [dayFilter, setDayFilter]         = useState<string | null>(null);
+  const [muted, setMuted]                 = useState(() => localStorage.getItem('pn_sound_muted') === 'true');
   const [showPriorityQueue, setShowPriorityQueue] = useState(false);
   const [showFollowUp, setShowFollowUp]           = useState(false);
   const [sendingFollowUp, setSendingFollowUp]     = useState<string | null>(null);
@@ -47,13 +55,19 @@ export default function Dashboard({ user }: { user: any }) {
   const [notifications, setNotifications]   = useState<any[]>([]);
   const [toasts, setToasts]                 = useState<any[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [bancos, setBancos]                 = useState<any[]>([]);
+  const [showPresencial, setShowPresencial] = useState(false);
+  const [todayApptLeadIds, setTodayApptLeadIds] = useState<string[]>([]);
 
   const searchRef = useRef(search);
   searchRef.current = search;
   const pageRef = useRef(page);
   pageRef.current = page;
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
 
   function playNewLeadSound() {
+    if (mutedRef.current) return;
     try {
       const ctx = new AudioContext();
       [[880, 0], [1100, 0.18]].forEach(([freq, delay]) => {
@@ -73,6 +87,7 @@ export default function Dashboard({ user }: { user: any }) {
   }
 
   function playNewMessageSound() {
+    if (mutedRef.current) return;
     try {
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
@@ -90,14 +105,21 @@ export default function Dashboard({ user }: { user: any }) {
   }
 
   const load = useCallback(async (q?: string) => {
-    const query = q !== undefined ? q : searchRef.current;
-    const [l, s] = await Promise.all([fetchLeads(query), fetchStats()]);
-    // Dedup por ID — evita card duplicado quando realtime + polling disparam juntos
-    const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
-    setLeads(unique);
-    setStats(s);
-    setLoading(false);
-    setRefreshing(false);
+    try {
+      const query = q !== undefined ? q : searchRef.current;
+      const [l, s] = await Promise.all([fetchLeads(query), fetchStats()]);
+      const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
+      setLeads(unique);
+      setStats(s);
+    } catch (err) {
+      console.error("load error", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    // Bancos em background — não bloqueia o Kanban
+    fetchBancos().then(setBancos).catch(() => {});
+    fetchTodayAppointedLeadIds().then(setTodayApptLeadIds).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -120,7 +142,7 @@ export default function Dashboard({ user }: { user: any }) {
         setToasts(prev => [...prev, n]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== n.id)), 10000);
         // Som de alerta
-        try {
+        if (!mutedRef.current) try {
           const ctx = new AudioContext();
           [880, 1100, 1320].forEach((freq, i) => {
             const osc = ctx.createOscillator(); const gain = ctx.createGain();
@@ -280,7 +302,7 @@ export default function Dashboard({ user }: { user: any }) {
       return { ...l, urgency, motivo, emoji, nomeLead, minsSince: mins };
     })
     .sort((a, b) => {
-      const order = { alta: 0, media: 1, baixa: 2 };
+      const order: Record<string, number> = { alta: 0, media: 1, baixa: 2 };
       return order[a.urgency] - order[b.urgency] || b.minsSince - a.minsSince;
     });
 
@@ -306,7 +328,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   async function handleSendFollowUp(lead: any, text: string) {
     setSendingFollowUp(lead.id);
-    await (await import("../lib/api")).sendMessage(lead.id, lead.phone, text, currentUser.nome);
+    await (await import("../lib/api")).sendMessage(lead.id, lead.phone, text, user.nome);
     setSendingFollowUp(null);
     load();
   }
@@ -321,7 +343,7 @@ export default function Dashboard({ user }: { user: any }) {
       setNewLeadMsg("✅ Paciente criado!");
       setNewLeadForm({
         name: "", phone: "", email: "", cpf: "", data_nascimento: "", sexo: "",
-        stage: "novo_lead", ai_mode: false, first_message: "",
+        stage: "em_atendimento", ai_mode: false, first_message: "",
         origem: "",
         cep: "", endereco: "", numero: "", complemento: "", bairro: "", cidade: "", estado: "",
         convenio: "",
@@ -389,22 +411,33 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-1 ml-2">
-            {(["kanban", "agenda", "financeiro", "relatorio", "prontuario", "admin"] as Page[]).map(p => {
+            {(["kanban", "agenda", "pacientes", "pendencias", "financeiro", "relatorio", "prontuario", "estoque", "admin"] as Page[]).map(p => {
               const isKanban = p === "kanban";
+              const isPendencias = p === "pendencias";
+              const pendenciasCount = leads.filter(l => l.pendencia_financeira).length;
               const hasAlert = isKanban && (newLeadAlert || newMsgAlert);
               return (
                 <button
                   key={p}
                   onClick={() => { setPage(p); if (isKanban) { setNewLeadAlert(false); setNewMsgAlert(false); } }}
-                  className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"}`}
+                  className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    page === p
+                      ? isPendencias ? "bg-yellow-500/25 text-yellow-300" : "bg-white/15 text-white"
+                      : isPendencias && pendenciasCount > 0 ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-500/10" : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                  }`}
                 >
-                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : p === "prontuario" ? "Prontuário" : "Admin"}
+                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "pacientes" ? "👥 Pacientes" : p === "pendencias" ? "💰 Pendências" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : p === "prontuario" ? "Prontuário" : p === "estoque" ? "📦 Estoque" : "Admin"}
                   {hasAlert && (
                     <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
                         style={{ backgroundColor: newLeadAlert ? "#22c55e" : "#f59e0b" }} />
                       <span className="relative inline-flex rounded-full h-2.5 w-2.5"
                         style={{ backgroundColor: newLeadAlert ? "#22c55e" : "#f59e0b" }} />
+                    </span>
+                  )}
+                  {isPendencias && pendenciasCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-yellow-500 text-white text-[9px] font-black flex items-center justify-center px-1">
+                      {pendenciasCount}
                     </span>
                   )}
                 </button>
@@ -478,26 +511,12 @@ export default function Dashboard({ user }: { user: any }) {
                 )}
               </button>
             )}
-            {/* Follow-ups */}
-            {page === "kanban" && followUpLeads.length > 0 && (
+            {/* Paciente Presencial */}
+            {(page === "kanban" || page === "agenda") && (
               <button
-                onClick={() => setShowFollowUp(true)}
-                title="Leads precisando de follow-up — mais de 24h sem contato"
-                className="relative flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-rose-500/15 hover:bg-rose-500/30 border-rose-500/30 text-rose-300 transition"
-              >
-                <span className="text-sm leading-none">🔔</span>
-                <span className="hidden sm:inline">Follow-up</span>
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-lg">
-                  {followUpLeads.length}
-                </span>
-              </button>
-            )}
-            {/* Novo Paciente */}
-            {page === "kanban" && (
-              <button
-                onClick={() => setShowNewLead(true)}
+                onClick={() => setShowPresencial(true)}
                 className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-emerald-600/20 hover:bg-emerald-600/40 border-emerald-500/30 text-emerald-300 transition"
-                title="Criar paciente manualmente"
+                title="Adicionar paciente presencial — cadastro + consulta + pagamento"
               >
                 <UserPlus size={13} />
                 <span className="hidden sm:inline">Novo Paciente</span>
@@ -517,6 +536,14 @@ export default function Dashboard({ user }: { user: any }) {
             >
               <span className="text-sm leading-none">🤖</span>
               <span className="hidden sm:inline">{mariaActive ? "MARIA ON" : "MARIA OFF"}</span>
+            </button>
+
+            <button
+              onClick={() => setMuted(m => { const next = !m; localStorage.setItem('pn_sound_muted', next ? 'true' : 'false'); return next; })}
+              title={muted ? 'Som desligado — clique para ligar' : 'Som ligado — clique para desligar'}
+              className={`p-2 rounded-xl border transition ${muted ? 'bg-red-500/15 border-red-500/30 text-red-400' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/50'}`}
+            >
+              {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
 
             <button
@@ -638,14 +665,6 @@ export default function Dashboard({ user }: { user: any }) {
                 <span className="text-emerald-300 text-[10px] font-black">✅ Sem urgências</span>
               )}
               <div className="w-px h-3 bg-white/15 shrink-0" />
-              {/* Follow-ups */}
-              {followUpLeads.length > 0 ? (
-                <button onClick={() => setShowFollowUp(true)} className="flex items-center gap-1 text-[10px] font-black text-rose-300 hover:text-rose-200 transition shrink-0">
-                  🔔 {followUpLeads.length} follow-up{followUpLeads.length !== 1 ? "s" : ""} pendente{followUpLeads.length !== 1 ? "s" : ""}
-                </button>
-              ) : (
-                <span className="text-white/30 text-[10px]">✓ Follow-ups em dia</span>
-              )}
               {/* Leads quentes */}
               {priorityQueue.filter(l => l.stage === "interesse_real").length > 0 && (
                 <>
@@ -696,15 +715,68 @@ export default function Dashboard({ user }: { user: any }) {
           loading ? (
             <div className="flex items-center justify-center h-full text-white/30 text-sm">Carregando leads...</div>
           ) : (
-            <div className="h-full px-4 sm:px-6 pb-6">
-              <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} />
+            <div className="h-full flex flex-col px-4 sm:px-6 pb-6 gap-2">
+              {/* Day filter bar */}
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                <CalendarDays size={13} className="text-white/30" />
+                {[
+                  { label: "Todos", value: null },
+                  { label: "Hoje", value: new Date().toISOString().slice(0, 10) },
+                  { label: "Ontem", value: (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })() },
+                ].map(opt => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setDayFilter(opt.value)}
+                    className={`text-[11px] font-black px-3 py-1 rounded-lg border transition-all ${
+                      dayFilter === opt.value
+                        ? "bg-emerald-600/80 text-white border-emerald-500/60 shadow shadow-emerald-500/20"
+                        : "bg-white/5 text-white/45 border-white/10 hover:text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    {opt.label}
+                    {dayFilter === opt.value && opt.value !== null && (
+                      <span className="ml-1.5 bg-white/25 px-1 py-0.5 rounded-full text-[9px]">
+                        {filteredLeads.filter(l => {
+                          const ref = l.last_message_at ?? l.created_at;
+                          const d = new Date(ref);
+                          const y = d.getFullYear();
+                          const mo = String(d.getMonth() + 1).padStart(2, '0');
+                          const da = String(d.getDate()).padStart(2, '0');
+                          return `${y}-${mo}-${da}` === opt.value;
+                        }).length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <input
+                  type="date"
+                  value={dayFilter ?? ""}
+                  onChange={e => setDayFilter(e.target.value || null)}
+                  className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-white/5 text-white/50 border-white/10 focus:outline-none focus:border-emerald-500/50 focus:text-white transition"
+                />
+                {dayFilter && (
+                  <button
+                    onClick={() => setDayFilter(null)}
+                    className="text-[10px] text-white/30 hover:text-white/60 font-black transition"
+                    title="Limpar filtro"
+                  >
+                    ✕ limpar
+                  </button>
+                )}
+              </div>
+              <div className="flex-1 min-h-0">
+                <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} dayFilter={dayFilter} todayApptLeadIds={todayApptLeadIds} />
+              </div>
             </div>
           )
         )}
-        {page === "agenda" && <AgendaPage />}
-        {page === "financeiro" && <FinanceiroPage />}
+        {page === "agenda" && <AgendaPage onSelectLead={setSelected} currentUser={user} />}
+        {page === "pacientes" && <PacientesPage leads={leads} currentUser={user} onSelect={setSelected} />}
+        {page === "pendencias" && <PendenciasPage leads={leads} onSelect={setSelected} onResolved={load} />}
+        {page === "financeiro" && <FinanceiroPage initialPaciente={financeiroPatient} />}
         {page === "relatorio" && <RelatorioPage />}
         {page === "prontuario" && <ProntuarioPage />}
+        {page === "estoque" && <EstoquePage />}
         {page === "admin" && <AdminPanel user={user} />}
       </main>
 
@@ -767,53 +839,6 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       )}
 
-      {/* Modal: Follow-up Rápido */}
-      {showFollowUp && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
-          <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-white/10 shadow-2xl overflow-hidden" style={{ background: "rgba(10,20,55,0.98)" }}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
-              <div>
-                <p className="text-white font-black text-sm">🔔 Follow-up Rápido</p>
-                <p className="text-white/35 text-[10px] mt-0.5">{followUpLeads.length} lead{followUpLeads.length !== 1 ? "s" : ""} sem contato há mais de 24h</p>
-              </div>
-              <button onClick={() => setShowFollowUp(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
-                <X size={16} className="text-white/50" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto divide-y divide-white/5">
-              {followUpLeads.map(l => (
-                <div key={l.id} className="px-5 py-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500/60 to-orange-500/60 flex items-center justify-center text-white font-black text-[10px] shrink-0">
-                      {l.nomeLead[0]?.toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-black text-xs truncate">{l.nomeLead}</p>
-                      <p className="text-rose-300/70 text-[10px]">Silêncio há {l.diasSem} dia{l.diasSem !== 1 ? "s" : ""}</p>
-                    </div>
-                    <button onClick={() => { setSelected(l); setShowFollowUp(false); }}
-                      className="text-[10px] text-white/30 hover:text-white/60 transition shrink-0">
-                      Ver chat →
-                    </button>
-                  </div>
-                  <div className="rounded-xl border border-white/10 px-3 py-2.5" style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <p className="text-white/60 text-[10px] mb-1.5">Mensagem sugerida:</p>
-                    <p className="text-white/80 text-xs leading-relaxed">{l.template}</p>
-                  </div>
-                  <button
-                    onClick={() => handleSendFollowUp(l, l.template)}
-                    disabled={sendingFollowUp === l.id}
-                    className="w-full py-2 rounded-xl bg-emerald-600/80 hover:bg-emerald-600 text-white font-black text-xs transition disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  >
-                    <span>{sendingFollowUp === l.id ? "Enviando..." : "📤 Enviar follow-up"}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal: novo paciente */}
       {showNewLead && (
@@ -1042,11 +1067,28 @@ export default function Dashboard({ user }: { user: any }) {
           currentUser={user}
           onClose={() => setSelected(null)}
           onUpdated={() => { load(); setSelected(null); }}
+          onGoFinanceiro={(patientName) => {
+            load();
+            setSelected(null);
+            setFinanceiroPatient(patientName);
+            setPage("financeiro");
+          }}
         />
       )}
 
+      {showPresencial && (
+        <PacientePresencialModal
+          currentUser={user}
+          onClose={() => setShowPresencial(false)}
+          onDone={(lead) => { setShowPresencial(false); load(); setSelected(lead); }}
+        />
+      )}
+
+      {/* Chat da equipe — botão flutuante */}
+      <TeamChat currentUser={user} />
+
       {/* Toasts de notificação da IA — canto inferior direito */}
-      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed bottom-20 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
         {toasts.map(n => (
           <div key={n.id}
             className="pointer-events-auto flex items-start gap-3 pl-4 pr-3 py-3 rounded-2xl border shadow-2xl max-w-xs"
