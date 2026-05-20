@@ -89,6 +89,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [perfBandeira,     setPerfBandeira]     = useState(lead.bandeira_cartao || "");
   const [perfTaxaCartao,   setPerfTaxaCartao]   = useState(lead.taxa_cartao != null ? String(lead.taxa_cartao) : "");
   const [perfTaxasDiversas,setPerfTaxasDiversas] = useState(lead.taxas_diversas != null ? String(lead.taxas_diversas) : "");
+  const [perfParcelas,     setPerfParcelas]     = useState(lead.num_parcelas ? String(lead.num_parcelas) : "1");
   const [savingPerf,       setSavingPerf]       = useState(false);
   const [perfSaved,     setPerfSaved]     = useState(false);
 
@@ -365,6 +366,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
       bandeira_cartao:   perfBandeira || undefined,
       taxa_cartao:       perfTaxaCartao ? parseFloat(perfTaxaCartao.replace(",", ".")) : null,
       taxas_diversas:    perfTaxasDiversas ? parseFloat(perfTaxasDiversas.replace(",", ".")) : null,
+      num_parcelas:      parseInt(perfParcelas) || 1,
     });
     setSavingPerf(false);
     if (ok) {
@@ -978,9 +980,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               {/* Método */}
               <div>
                 <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Forma de pagamento</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {["PIX", "Cartão", "Dinheiro", "Transferência", "Convênio"].map(m => (
-                    <button key={m} onClick={() => setPerfPagMetodo(perfPagMetodo === m ? "" : m)}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {["PIX", "Cartão Déb.", "Cartão Créd.", "Dinheiro", "Transferência", "Convênio"].map(m => (
+                    <button key={m} onClick={() => { setPerfPagMetodo(perfPagMetodo === m ? "" : m); if (m !== "Cartão Créd.") setPerfParcelas("1"); }}
                       className={`py-2 rounded-lg text-[10px] font-bold border transition ${perfPagMetodo === m ? "bg-sky-600/80 text-white border-sky-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
                       {m}
                     </button>
@@ -989,9 +991,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               </div>
 
               {/* Bandeira do cartão */}
-              {(perfPagMetodo === "Cartão") && (
+              {(perfPagMetodo === "Cartão Déb." || perfPagMetodo === "Cartão Créd.") && (
                 <div>
-                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Bandeira do cartão</label>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Bandeira</label>
                   <div className="grid grid-cols-6 gap-1.5">
                     {["Visa", "Master", "Elo", "Amex", "Hipercard", "Outra"].map(b => (
                       <button key={b} onClick={() => setPerfBandeira(perfBandeira === b ? "" : b)}
@@ -1002,6 +1004,53 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                   </div>
                 </div>
               )}
+
+              {/* Parcelas — só cartão crédito */}
+              {perfPagMetodo === "Cartão Créd." && (
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Parcelas</label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {["1","2","3","4","5","6","7","8","9","10","11","12"].map(p => (
+                      <button key={p} onClick={() => setPerfParcelas(p)}
+                        className={`py-2 rounded-lg text-[10px] font-bold border transition ${perfParcelas === p ? "bg-emerald-600/80 text-white border-emerald-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                        {p}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tabela de parcelas calculada */}
+              {perfPagMetodo === "Cartão Créd." && parseInt(perfParcelas) > 1 && perfPagValor && perfPagData && (() => {
+                const total    = parseFloat(perfPagValor) || 0;
+                const n        = parseInt(perfParcelas);
+                const base     = Math.floor((total / n) * 100) / 100;
+                const ultima   = Math.round((total - base * (n - 1)) * 100) / 100;
+                const primeira = new Date(perfPagData + "T12:00:00");
+                return (
+                  <div className="rounded-xl border border-emerald-500/20 overflow-hidden">
+                    <div className="px-3 py-2 flex items-center justify-between" style={{ background: "rgba(5,150,105,0.08)" }}>
+                      <span className="text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                        {n}x de {base.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                      <span className="text-white/40 text-[10px]">Total {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {Array.from({ length: n }, (_, i) => {
+                        const d = new Date(primeira);
+                        d.setMonth(d.getMonth() + i);
+                        const valor = i === n - 1 ? ultima : base;
+                        return (
+                          <div key={i} className="flex items-center justify-between px-3 py-1.5">
+                            <span className="text-white/50 text-[10px]">{i + 1}ª parcela · {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+                            <span className="text-emerald-300 text-[10px] font-black">{valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Observações do pagamento</label>

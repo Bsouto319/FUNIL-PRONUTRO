@@ -161,6 +161,7 @@ export async function updateLeadProfile(id: string, data: {
   bandeira_cartao?: string | null;
   taxa_cartao?: number | null;
   taxas_diversas?: number | null;
+  num_parcelas?: number | null;
 }): Promise<boolean> {
   const { error } = await supabase
     .from("pn_leads")
