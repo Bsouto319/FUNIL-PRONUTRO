@@ -8,7 +8,6 @@ interface Props {
   onToggleAi: (id: string, mode: boolean) => void;
   currentUser: any;
   dayFilter?: string | null;
-  todayApptLeadIds?: string[];
 }
 
 function isSameDay(isoDate: string, dayStr: string): boolean {
@@ -19,7 +18,7 @@ function isSameDay(isoDate: string, dayStr: string): boolean {
   return `${y}-${mo}-${da}` === dayStr;
 }
 
-const PROTECTED = ["agendado", "resolvido", "financeiro"];
+const PROTECTED = ["resolvido", "financeiro"];
 
 function minutesSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -37,7 +36,7 @@ function formatTime(iso: string): string {
 
 const KANBAN_STAGES = STAGES.filter(s => s.kanban);
 
-export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter, todayApptLeadIds = [] }: Props) {
+export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
 
   function handleDrop(e: React.DragEvent, stage: string) {
@@ -50,13 +49,9 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter, today
   return (
     <div className="h-full flex gap-2.5 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
       {KANBAN_STAGES.map(({ key, label, headerBg }) => {
-        const apptSet = new Set(todayApptLeadIds);
         const stageLeads = leads
           .filter(l => l.stage === key)
           .filter(l => {
-            if (key === "agendado") {
-              return apptSet.size === 0 ? false : apptSet.has(l.id);
-            }
             if (!dayFilter) return true;
             const ref = l.last_message_at ?? l.created_at;
             return isSameDay(ref, dayFilter);

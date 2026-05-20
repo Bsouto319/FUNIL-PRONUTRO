@@ -12,7 +12,7 @@ import PacientesPage from "./PacientesPage";
 import PacientePresencialModal from "./PacientePresencialModal";
 import EstoquePage from "./EstoquePage";
 import TeamChat from "./TeamChat";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, fetchTodayAppointedLeadIds } from "../lib/api";
+import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin";
@@ -57,7 +57,6 @@ export default function Dashboard({ user }: { user: any }) {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [bancos, setBancos]                 = useState<any[]>([]);
   const [showPresencial, setShowPresencial] = useState(false);
-  const [todayApptLeadIds, setTodayApptLeadIds] = useState<string[]>([]);
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -119,7 +118,6 @@ export default function Dashboard({ user }: { user: any }) {
     }
     // Bancos em background — não bloqueia o Kanban
     fetchBancos().then(setBancos).catch(() => {});
-    fetchTodayAppointedLeadIds().then(setTodayApptLeadIds).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -765,7 +763,7 @@ export default function Dashboard({ user }: { user: any }) {
                 )}
               </div>
               <div className="flex-1 min-h-0">
-                <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} dayFilter={dayFilter} todayApptLeadIds={todayApptLeadIds} />
+                <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} dayFilter={dayFilter} />
               </div>
             </div>
           )
