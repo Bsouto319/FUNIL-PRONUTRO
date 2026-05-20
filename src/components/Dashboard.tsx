@@ -57,12 +57,16 @@ export default function Dashboard({ user }: { user: any }) {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [bancos, setBancos]                 = useState<any[]>([]);
   const [showPresencial, setShowPresencial] = useState(false);
-  const [showOutbound, setShowOutbound]     = useState(false);
-  const [outboundPhone, setOutboundPhone]   = useState("");
-  const [outboundName,  setOutboundName]    = useState("");
-  const [outboundText,  setOutboundText]    = useState("");
+  const [showOutbound, setShowOutbound]       = useState(false);
+  const [outboundPhone, setOutboundPhone]     = useState("");
+  const [outboundName,  setOutboundName]      = useState("");
+  const [outboundText,  setOutboundText]      = useState("");
   const [sendingOutbound, setSendingOutbound] = useState(false);
-  const [outboundErr,   setOutboundErr]     = useState("");
+  const [outboundErr,   setOutboundErr]       = useState("");
+  const [outboundSearch, setOutboundSearch]   = useState("");
+  const [outboundSuggs,  setOutboundSuggs]    = useState<any[]>([]);
+  const [outboundLead,   setOutboundLead]     = useState<any | null>(null);
+  const outboundTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const searchRef = useRef(search);
   searchRef.current = search;
@@ -362,32 +366,56 @@ export default function Dashboard({ user }: { user: any }) {
   async function handleSendOutbound(e: React.FormEvent) {
     e.preventDefault();
     setOutboundErr("");
-    const cleanPhone = outboundPhone.replace(/\D/g, "");
+    const cleanPhone = (outboundLead?.phone || outboundPhone).replace(/\D/g, "");
     if (!cleanPhone || !outboundText.trim()) return;
     setSendingOutbound(true);
-    // Find or create lead
-    const { data: existing } = await supabase.from("pn_leads").select("id,phone,name,whatsapp_name,stage").eq("phone", cleanPhone).maybeSingle();
-    let leadId = existing?.id;
+    let leadId = outboundLead?.id as string | undefined;
     if (!leadId) {
-      const { data: created, error } = await supabase.from("pn_leads").insert({
-        name: outboundName.trim() || null,
-        phone: cleanPhone,
-        stage: "em_atendimento",
-        ai_mode: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).select("id").single();
-      if (error || !created) { setOutboundErr("Erro ao criar contato."); setSendingOutbound(false); return; }
-      leadId = created.id;
+      // Try existing lead by phone, else create
+      const { data: existing } = await supabase.from("pn_leads").select("id").eq("phone", cleanPhone).maybeSingle();
+      leadId = existing?.id;
+      if (!leadId) {
+        const { data: created, error } = await supabase.from("pn_leads").insert({
+          name: outboundName.trim() || null,
+          phone: cleanPhone,
+          stage: "em_atendimento",
+          ai_mode: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).select("id").single();
+        if (error || !created) { setOutboundErr("Erro ao criar contato."); setSendingOutbound(false); return; }
+        leadId = created.id;
+      }
     }
-    const ok = await sendMessage(leadId, cleanPhone, outboundText.trim(), user.nome || "Atendente");
+    const ok = await sendMessage(leadId!, cleanPhone, outboundText.trim(), user.nome || "Atendente");
     setSendingOutbound(false);
     if (!ok) { setOutboundErr("Erro ao enviar mensagem. Verifique o número."); return; }
     setShowOutbound(false);
     setOutboundPhone(""); setOutboundName(""); setOutboundText(""); setOutboundErr("");
+    setOutboundSearch(""); setOutboundSuggs([]); setOutboundLead(null);
     await load();
     const { data: updatedLead } = await supabase.from("pn_leads").select("*").eq("id", leadId).single();
     if (updatedLead) setSelected(updatedLead);
+  }
+
+  function handleOutboundSearchChange(text: string) {
+    setOutboundSearch(text);
+    setOutboundLead(null);
+    if (outboundTimer.current) clearTimeout(outboundTimer.current);
+    if (text.trim().length >= 2) {
+      outboundTimer.current = setTimeout(() =>
+        fetchLeads(text).then(results => setOutboundSuggs(results.slice(0, 6))), 200);
+    } else {
+      setOutboundSuggs([]);
+    }
+  }
+
+  function selectOutboundLead(lead: any) {
+    setOutboundLead(lead);
+    setOutboundName(lead.name || lead.whatsapp_name || "");
+    setOutboundPhone(lead.phone || "");
+    setOutboundSearch(lead.name || lead.whatsapp_name || `+${lead.phone}`);
+    setOutboundSuggs([]);
   }
 
   const statCards = [
@@ -1151,23 +1179,75 @@ export default function Dashboard({ user }: { user: any }) {
               </button>
             </div>
             <form onSubmit={handleSendOutbound} className="px-5 py-4 space-y-3">
+
+              {/* Busca de paciente existente */}
               <div>
-                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Telefone (WhatsApp) *</label>
-                <input
-                  value={outboundPhone} onChange={e => setOutboundPhone(e.target.value)}
-                  placeholder="61999998888"
-                  required
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                />
+                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Buscar paciente ou contato</label>
+                {outboundLead ? (
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30">
+                    <div className="w-7 h-7 rounded-full bg-sky-500/25 flex items-center justify-center text-sky-300 font-black text-xs shrink-0">
+                      {(outboundLead.name || outboundLead.whatsapp_name || "?")[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sky-200 text-sm font-bold truncate">{outboundLead.name || outboundLead.whatsapp_name}</p>
+                      <p className="text-sky-400/50 text-[10px] font-mono">+{outboundLead.phone}</p>
+                    </div>
+                    <button type="button" onClick={() => { setOutboundLead(null); setOutboundSearch(""); setOutboundPhone(""); setOutboundName(""); }}
+                      className="text-sky-400/50 hover:text-sky-300 transition shrink-0">
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      value={outboundSearch}
+                      onChange={e => handleOutboundSearchChange(e.target.value)}
+                      placeholder="Digite nome ou telefone..."
+                      autoFocus
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                    />
+                    {outboundSuggs.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-white/10 overflow-hidden z-10 shadow-2xl" style={{ background: "rgba(10,18,60,0.98)" }}>
+                        {outboundSuggs.map(l => (
+                          <button key={l.id} type="button" onClick={() => selectOutboundLead(l)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/10 transition text-left border-b border-white/5 last:border-0">
+                            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/60 font-black text-xs shrink-0">
+                              {(l.name || l.whatsapp_name || "?")[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white/80 text-sm font-bold truncate">{l.name || l.whatsapp_name || "—"}</p>
+                              <p className="text-white/30 text-[10px] font-mono">+{l.phone}</p>
+                            </div>
+                            {l.numero_prontuario && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/10 text-white/40 shrink-0">
+                                #{String(l.numero_prontuario).padStart(3,"0")}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                        <button type="button" onClick={() => { setOutboundSuggs([]); }}
+                          className="w-full px-3 py-2 text-center text-white/25 text-[10px] hover:bg-white/5 transition">
+                          Contato novo (não listado)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nome (opcional)</label>
-                <input
-                  value={outboundName} onChange={e => setOutboundName(e.target.value)}
-                  placeholder="Nome do paciente"
-                  className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                />
-              </div>
+
+              {/* Telefone — preenchido automaticamente ou manual */}
+              {!outboundLead && (
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Telefone WhatsApp *</label>
+                  <input
+                    value={outboundPhone} onChange={e => setOutboundPhone(e.target.value)}
+                    placeholder="61999998888"
+                    required
+                    className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Mensagem *</label>
                 <textarea
@@ -1178,7 +1258,7 @@ export default function Dashboard({ user }: { user: any }) {
                 />
               </div>
               {outboundErr && <p className="text-rose-400 text-xs font-bold">{outboundErr}</p>}
-              <button type="submit" disabled={sendingOutbound}
+              <button type="submit" disabled={sendingOutbound || (!outboundLead && !outboundPhone.replace(/\D/g,""))}
                 className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-black transition disabled:opacity-50">
                 {sendingOutbound ? "Enviando..." : "📲 Enviar e Abrir Conversa"}
               </button>
