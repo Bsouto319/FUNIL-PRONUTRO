@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Brain, Copy, CheckCheck, UserCircle, Save } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Receipt, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
   fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal,
-  updateLeadProfile,
+  updateLeadProfile, updateLeadPendencia, sendMediaWhatsApp, sendPttWhatsApp,
+  fetchQuickReplies, createQuickReply, deleteQuickReply,
 } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
@@ -13,6 +14,7 @@ interface Props {
   currentUser: any;
   onClose: () => void;
   onUpdated: () => void;
+  onGoFinanceiro?: (patientName: string) => void;
 }
 
 function fmtFileSize(bytes: number) {
@@ -21,10 +23,11 @@ function fmtFileSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Props) {
+export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoFinanceiro }: Props) {
   const [messages, setMessages]   = useState<any[]>([]);
   const [text, setText]           = useState("");
   const [sending, setSending]     = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
   const [notes, setNotes]         = useState(lead.notes || "");
   const [stage, setStage]         = useState(lead.stage);
   const [tab, setTab]             = useState<"chat" | "agendar" | "notas" | "perfil">("chat");
@@ -40,8 +43,24 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [agendadoErr, setAgendadoErr] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sendError, setSendError]         = useState(false);
-  const [aiAnalysis, setAiAnalysis]       = useState<any>(null);
-  const [analyzing, setAnalyzing]         = useState(false);
+  const [pendencia, setPendencia]         = useState(!!lead.pendencia_financeira);
+  const [recording, setRecording]         = useState(false);
+  const [recordSecs, setRecordSecs]       = useState(0);
+  const [audioBlob, setAudioBlob]         = useState<Blob | null>(null);
+  const [selectedFile, setSelectedFile]   = useState<File | null>(null);
+  const [sendingMedia, setSendingMedia]   = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef        = useRef<Blob[]>([]);
+  const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef     = useRef<HTMLInputElement>(null);
+  const [quickReplies, setQuickReplies]   = useState<any[]>([]);
+  const [showQR, setShowQR]               = useState(true);
+  const [qrSearch, setQrSearch]           = useState("");
+  const [showNewQR, setShowNewQR]         = useState(false);
+  const [newQRTitle, setNewQRTitle]       = useState("");
+  const [newQRBody, setNewQRBody]         = useState("");
+  const [savingQR, setSavingQR]           = useState(false);
+  const [forwardText, setForwardText]     = useState<string | null>(null);
   const [copied, setCopied]               = useState(false);
 
   // Perfil / pagamento
@@ -59,12 +78,16 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
   const [perfBairro,    setPerfBairro]    = useState(lead.bairro || "");
   const [perfCidade,    setPerfCidade]    = useState(lead.cidade || "");
   const [perfEstado,    setPerfEstado]    = useState(lead.estado || "");
-  const [perfPagStatus, setPerfPagStatus] = useState(lead.pagamento_status || "pendente");
-  const [perfPagValor,  setPerfPagValor]  = useState(lead.pagamento_valor != null ? String(lead.pagamento_valor) : "");
-  const [perfPagMetodo, setPerfPagMetodo] = useState(lead.pagamento_metodo || "");
-  const [perfPagData,   setPerfPagData]   = useState(lead.pagamento_data || "");
-  const [perfPagObs,    setPerfPagObs]    = useState(lead.pagamento_obs || "");
-  const [savingPerf,    setSavingPerf]    = useState(false);
+  const [perfPagStatus,    setPerfPagStatus]    = useState(lead.pagamento_status || "pendente");
+  const [perfPagValor,     setPerfPagValor]     = useState(lead.pagamento_valor != null ? String(lead.pagamento_valor) : "");
+  const [perfPagMetodo,    setPerfPagMetodo]    = useState(lead.pagamento_metodo || "");
+  const [perfPagData,      setPerfPagData]      = useState(lead.pagamento_data || "");
+  const [perfPagObs,       setPerfPagObs]       = useState(lead.pagamento_obs || "");
+  const [perfDataVenda,    setPerfDataVenda]    = useState(lead.data_venda || "");
+  const [perfBandeira,     setPerfBandeira]     = useState(lead.bandeira_cartao || "");
+  const [perfTaxaCartao,   setPerfTaxaCartao]   = useState(lead.taxa_cartao != null ? String(lead.taxa_cartao) : "");
+  const [perfTaxasDiversas,setPerfTaxasDiversas] = useState(lead.taxas_diversas != null ? String(lead.taxas_diversas) : "");
+  const [savingPerf,       setSavingPerf]       = useState(false);
   const [perfSaved,     setPerfSaved]     = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -88,14 +111,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
 
   // Auto-trigger análise ao abrir o chat (apenas se última mensagem for do paciente)
   useEffect(() => {
-    const lastMsg = lead.last_message_at;
-    if (!lastMsg) return;
-    const mins = Math.floor((Date.now() - new Date(lastMsg).getTime()) / (1000 * 60));
-    if (mins < 1440 && !lead.ai_mode) {
-      const t = setTimeout(() => handleAnalyze(), 900);
-      return () => clearTimeout(t);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchQuickReplies().then(setQuickReplies);
   }, []);
 
   useEffect(() => {
@@ -149,6 +165,78 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     await updateLeadStage(lead.id, newStage);
   }
 
+  async function handleSaveQR() {
+    if (!newQRTitle.trim() || !newQRBody.trim()) return;
+    setSavingQR(true);
+    await createQuickReply(newQRTitle.trim(), newQRBody.trim());
+    const updated = await fetchQuickReplies();
+    setQuickReplies(updated);
+    setNewQRTitle(""); setNewQRBody(""); setShowNewQR(false);
+    setSavingQR(false);
+  }
+
+  async function handleDeleteQR(id: string) {
+    await deleteQuickReply(id);
+    setQuickReplies(prev => prev.filter(q => q.id !== id));
+  }
+
+  function useQuickReply(body: string) {
+    setText(body);
+    setShowQR(false);
+    setQrSearch("");
+  }
+
+  function handleForward(body: string) {
+    setText(`> ${body}\n\n`);
+    setForwardText(null);
+  }
+
+  function fmtSecs(s: number) {
+    return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus" : "audio/webm";
+      const mr = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        setAudioBlob(new Blob(chunksRef.current, { type: mimeType }));
+        stream.getTracks().forEach(t => t.stop());
+        clearInterval(timerRef.current!);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start(100);
+      setRecording(true);
+      setRecordSecs(0);
+      timerRef.current = setInterval(() => setRecordSecs(s => s + 1), 1000);
+    } catch { alert("Microfone não disponível ou sem permissão."); }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+  }
+
+  async function handleSendMedia() {
+    if (!selectedFile && !audioBlob) return;
+    setSendingMedia(true);
+    if (audioBlob) {
+      await sendPttWhatsApp(lead.phone, audioBlob);
+      setAudioBlob(null);
+      setRecordSecs(0);
+    } else if (selectedFile) {
+      await sendMediaWhatsApp(lead.phone, selectedFile);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+    setSendingMedia(false);
+    setTimeout(() => fetchMessages(lead.id).then(setMessages), 2000);
+  }
+
   async function handleNotesBlur() {
     await updateLeadNotes(lead.id, notes);
   }
@@ -158,36 +246,6 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
     onUpdated();
   }
 
-  async function handleAnalyze() {
-    setAnalyzing(true);
-    setAiAnalysis(null);
-    try {
-      const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-analyze-lead", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MTM2NjMsImV4cCI6MjA1Nzk4OTY2M30.TLBbLCx08gkD_RWnMpZ4dBKxnb4wZgm6vTbAFaGRZ3A" },
-        body: JSON.stringify({ lead_id: lead.id }),
-      });
-      const data = await res.json();
-      if (data.ok) setAiAnalysis(data);
-      else setAiAnalysis({ error: data.error || "Erro ao analisar" });
-    } catch {
-      setAiAnalysis({ error: "Falha de conexão" });
-    }
-    setAnalyzing(false);
-  }
-
-  async function handleCopyResponse() {
-    if (!aiAnalysis?.resposta_sugerida) return;
-    await navigator.clipboard.writeText(aiAnalysis.resposta_sugerida);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function handleApplyStage() {
-    if (!aiAnalysis?.stage_sugerido) return;
-    await handleStageChange(aiAnalysis.stage_sugerido);
-    setAiAnalysis((prev: any) => ({ ...prev, stageApplied: true }));
-  }
 
   async function loadSlots() {
     if (!medicoId || !data) return;
@@ -282,11 +340,21 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
       pagamento_metodo:  perfPagMetodo || undefined,
       pagamento_data:    perfPagData || undefined,
       pagamento_obs:     perfPagObs || undefined,
+      data_venda:        perfDataVenda || undefined,
+      bandeira_cartao:   perfBandeira || undefined,
+      taxa_cartao:       perfTaxaCartao ? parseFloat(perfTaxaCartao.replace(",", ".")) : null,
+      taxas_diversas:    perfTaxasDiversas ? parseFloat(perfTaxasDiversas.replace(",", ".")) : null,
     });
     setSavingPerf(false);
     if (ok) {
-      setPerfSaved(true);
-      setTimeout(() => setPerfSaved(false), 2500);
+      onUpdated();
+      const temPagamento = perfPagValor && parseFloat(perfPagValor) > 0 && perfPagStatus === "pago";
+      if (temPagamento && onGoFinanceiro) {
+        onGoFinanceiro(perfNome || lead.name || "");
+      } else {
+        setPerfSaved(true);
+        setTimeout(() => setPerfSaved(false), 900);
+      }
     }
   }
 
@@ -347,92 +415,76 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
         {/* ── CHAT TAB ── */}
         {tab === "chat" && (
           <>
-            {/* Copiloto IA — barra de ação */}
-            <div className="flex items-center gap-2 px-5 py-2 border-b border-white/8 flex-shrink-0" style={{ background: "rgba(109,40,217,0.05)" }}>
+            {/* Respostas Rápidas — painel expansível */}
+            <div className="flex-shrink-0 border-b border-white/8">
               <button
-                onClick={handleAnalyze}
-                disabled={analyzing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/80 hover:bg-violet-600 text-white text-[11px] font-black transition disabled:opacity-50"
+                onClick={() => { setShowQR(v => !v); setShowNewQR(false); setQrSearch(""); }}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition ${showQR ? "bg-emerald-600/10" : "hover:bg-white/3"}`}
               >
-                <Brain size={11} className={analyzing ? "animate-pulse" : ""} />
-                {analyzing ? "Analisando..." : "🤖 Analisar com IA"}
+                <Zap size={12} className={showQR ? "text-emerald-400" : "text-white/30"} />
+                <span className={`text-[11px] font-black ${showQR ? "text-emerald-300" : "text-white/35"}`}>Respostas Rápidas</span>
+                <span className="text-[10px] text-white/20 ml-1">{quickReplies.length} salvas</span>
+                <span className={`ml-auto text-white/20 text-[10px] transition-transform ${showQR ? "rotate-180" : ""}`}>▼</span>
               </button>
-              {aiAnalysis && !aiAnalysis.error && (
-                <div className="flex items-center gap-1.5">
-                  {aiAnalysis.urgencia === "alta" && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">🔴 URGENTE</span>
-                  )}
-                  {aiAnalysis.urgencia === "media" && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">🟡 MÉDIA</span>
-                  )}
-                  {aiAnalysis.urgencia === "baixa" && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🟢 BAIXA</span>
+
+              {showQR && (
+                <div className="px-3 pb-3 space-y-2" style={{ background: "rgba(5,150,105,0.04)" }}>
+                  {/* Busca */}
+                  <div className="relative">
+                    <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none" />
+                    <input value={qrSearch} onChange={e => setQrSearch(e.target.value)} placeholder="Buscar resposta..."
+                      className="w-full pl-7 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/50" />
+                  </div>
+
+                  {/* Lista */}
+                  <div className="space-y-1 max-h-44 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+                    {quickReplies.filter(q =>
+                      !qrSearch || q.title.toLowerCase().includes(qrSearch.toLowerCase()) || q.body.toLowerCase().includes(qrSearch.toLowerCase())
+                    ).map(q => (
+                      <div key={q.id} className="group flex items-start gap-2 px-3 py-2 rounded-lg bg-white/3 hover:bg-white/6 border border-white/5 hover:border-emerald-500/20 transition cursor-pointer"
+                        onClick={() => useQuickReply(q.body)}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-black text-emerald-300 truncate">{q.title}</p>
+                          <p className="text-[10px] text-white/40 truncate">{q.body}</p>
+                        </div>
+                        <button type="button" onClick={e => { e.stopPropagation(); handleDeleteQR(q.id); }}
+                          className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-rose-400 transition">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    ))}
+                    {!quickReplies.length && (
+                      <p className="text-center text-white/20 text-xs py-3">Nenhuma resposta salva ainda</p>
+                    )}
+                  </div>
+
+                  {/* Nova resposta */}
+                  {!showNewQR ? (
+                    <button onClick={() => setShowNewQR(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-emerald-500/30 text-emerald-400/70 hover:text-emerald-300 hover:border-emerald-500/50 text-[11px] font-bold transition">
+                      <Plus size={11} /> Nova resposta rápida
+                    </button>
+                  ) : (
+                    <div className="space-y-1.5 p-2 rounded-lg bg-white/5 border border-emerald-500/20">
+                      <input value={newQRTitle} onChange={e => setNewQRTitle(e.target.value)} placeholder="Título (ex: Confirmação de consulta)"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/50" />
+                      <textarea value={newQRBody} onChange={e => setNewQRBody(e.target.value)} placeholder="Texto da mensagem..." rows={3}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 resize-none" />
+                      <div className="flex gap-1.5">
+                        <button onClick={handleSaveQR} disabled={savingQR || !newQRTitle.trim() || !newQRBody.trim()}
+                          className="flex-1 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-[11px] font-black transition disabled:opacity-40">
+                          {savingQR ? "Salvando..." : "Salvar"}
+                        </button>
+                        <button onClick={() => { setShowNewQR(false); setNewQRTitle(""); setNewQRBody(""); }}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 text-white/40 hover:text-white text-[11px] transition">
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
-              <span className="text-white/20 text-[10px] ml-auto">Copiloto para a secretária</span>
             </div>
-
-            {/* Painel de análise */}
-            {aiAnalysis && (
-              <div className="mx-4 my-2 rounded-xl border flex-shrink-0 overflow-hidden" style={{
-                borderColor: aiAnalysis.error ? "rgba(239,68,68,0.3)" : "rgba(139,92,246,0.35)",
-                background: aiAnalysis.error ? "rgba(239,68,68,0.06)" : "rgba(109,40,217,0.08)",
-              }}>
-                {aiAnalysis.error ? (
-                  <p className="px-4 py-3 text-rose-300 text-xs font-bold">❌ {aiAnalysis.error}</p>
-                ) : (
-                  <div className="px-4 py-3 space-y-2.5">
-                    <div className="flex items-start gap-2">
-                      <Brain size={12} className="text-violet-400 shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-violet-300 text-[10px] font-black uppercase tracking-wider mb-0.5">O que o paciente quer</p>
-                        <p className="text-white/80 text-xs leading-relaxed">{aiAnalysis.intencao}</p>
-                      </div>
-                    </div>
-
-                    {aiAnalysis.observacao && (
-                      <p className="text-white/40 text-[10px] italic border-l-2 border-violet-500/30 pl-2">{aiAnalysis.observacao}</p>
-                    )}
-
-                    {/* Resposta sugerida */}
-                    <div className="rounded-lg border border-white/10 p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                      <p className="text-white/40 text-[10px] font-black uppercase mb-1.5">Resposta sugerida</p>
-                      <p className="text-white/80 text-xs leading-relaxed whitespace-pre-wrap">{aiAnalysis.resposta_sugerida}</p>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="flex items-center gap-2 pt-1 flex-wrap">
-                      <button
-                        onClick={() => { setText(aiAnalysis.resposta_sugerida); setAiAnalysis(null); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/80 hover:bg-violet-600 text-white text-[11px] font-black transition"
-                      >
-                        ⬇️ Usar no chat
-                      </button>
-                      <button
-                        onClick={handleCopyResponse}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 text-[11px] font-black transition"
-                      >
-                        {copied ? <CheckCheck size={11} /> : <Copy size={11} />}
-                        {copied ? "Copiado!" : "Copiar"}
-                      </button>
-                      {aiAnalysis.stage_sugerido && aiAnalysis.stage_sugerido !== stage && (
-                        <button
-                          onClick={handleApplyStage}
-                          disabled={aiAnalysis.stageApplied}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600/80 hover:bg-sky-600 text-white text-[11px] font-black transition disabled:opacity-50"
-                        >
-                          {aiAnalysis.stageApplied ? "✓ Aplicado" : `Mover → ${aiAnalysis.stage_sugerido.replace(/_/g, " ")}`}
-                        </button>
-                      )}
-                      <button onClick={() => setAiAnalysis(null)} className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 min-h-0">
               {messages.length === 0 && (
@@ -465,7 +517,15 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                         <div className="flex-1 h-px bg-white/8" />
                       </div>
                     )}
-                    <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                    <div className={`group flex items-end gap-1 ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                      {/* Botão encaminhar — lado esquerdo para mensagens de saída */}
+                      {isOut && m.body && (
+                        <button type="button" onClick={() => handleForward(m.body)}
+                          title="Encaminhar / Citar"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/70 transition shrink-0 self-center">
+                          <CornerUpLeft size={12} />
+                        </button>
+                      )}
                       <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${bubble}`}>
                         {isOut && m.sender_nome && (
                           <p className={`text-[9px] font-black mb-0.5 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
@@ -475,6 +535,14 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                         <p className="whitespace-pre-wrap break-words">{m.body}</p>
                         <p className={`text-[9px] mt-0.5 ${timeClr}`}>{timeStr}</p>
                       </div>
+                      {/* Botão encaminhar — lado direito para mensagens recebidas */}
+                      {!isOut && m.body && (
+                        <button type="button" onClick={() => handleForward(m.body)}
+                          title="Encaminhar / Citar"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/70 transition shrink-0 self-center">
+                          <CornerUpLeft size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -482,18 +550,96 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
               <div ref={bottomRef} />
             </div>
             <form onSubmit={handleSend} className="flex flex-col gap-1.5 px-5 py-3 border-t border-white/10 flex-shrink-0">
+              <input ref={fileInputRef} type="file" className="hidden"
+                onChange={e => { if (e.target.files?.[0]) { setSelectedFile(e.target.files[0]); setAudioBlob(null); } }} />
+
               {sendError && (
                 <p className="text-xs text-red-400 font-bold flex items-center gap-1">
                   <AlertCircle size={12} /> Falha ao enviar — verifique a conexão com WhatsApp
                 </p>
               )}
-              <div className="flex gap-2">
-                <input value={text} onChange={e => setText(e.target.value)} placeholder="Mensagem..."
-                  className={`flex-1 px-3 py-2 rounded-xl bg-white/5 border text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 transition ${sendError ? "border-red-500/50 focus:ring-red-500/30" : "border-white/10 focus:ring-emerald-500/50"}`} />
-                <button type="submit" disabled={sending || !text.trim()}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-40">
-                  <Send size={14} />
+
+              {/* Emoji picker */}
+              {showEmoji && (
+                <div className="flex flex-wrap gap-1 p-2 rounded-xl bg-white/5 border border-white/10">
+                  {["😊","😄","👍","🙏","❤️","✅","🎉","💪","🔥","⭐","😍","🤗","💬","📅","🩺","💊","🥗","🌿","🏥","👨‍⚕️","🧘","💧","🍎","😴","🌟","🤩","😅","😬","🤔","👋"].map(em => (
+                    <button key={em} type="button" onClick={() => setText(t => t + em)}
+                      className="text-lg hover:scale-125 transition-transform leading-none w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10">
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Arquivo selecionado */}
+              {selectedFile && !recording && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-500/10 border border-sky-500/20">
+                  <Paperclip size={12} className="text-sky-400 shrink-0" />
+                  <span className="flex-1 text-xs text-sky-300 truncate">{selectedFile.name} ({fmtFileSize(selectedFile.size)})</span>
+                  <button type="button" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    className="text-white/30 hover:text-white transition text-sm">✕</button>
+                </div>
+              )}
+
+              {/* Áudio pronto */}
+              {audioBlob && !recording && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <Mic size={12} className="text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-300">Áudio gravado — {fmtSecs(recordSecs)}</span>
+                  <button type="button" onClick={() => { setAudioBlob(null); setRecordSecs(0); }}
+                    className="ml-auto text-white/30 hover:text-white transition text-sm">✕</button>
+                </div>
+              )}
+
+              {/* Gravando */}
+              {recording && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <span className="text-xs text-red-400 font-bold">Gravando... {fmtSecs(recordSecs)}</span>
+                  <button type="button" onClick={stopRecording}
+                    className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 text-xs font-bold transition">
+                    <Square size={10} /> Parar
+                  </button>
+                </div>
+              )}
+
+              {/* Linha de input */}
+              <div className="flex gap-1.5">
+                <button type="button" onClick={() => setShowEmoji(v => !v)}
+                  className={`px-2.5 py-2 rounded-xl border text-base transition shrink-0 ${showEmoji ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"}`}
+                  title="Emojis">😊</button>
+
+                <button type="button" onClick={() => fileInputRef.current?.click()}
+                  className="p-2 rounded-xl border bg-white/5 border-white/10 text-white/40 hover:text-white/70 transition shrink-0"
+                  title="Enviar arquivo ou imagem">
+                  <Paperclip size={14} />
                 </button>
+
+                <button type="button"
+                  onClick={recording ? stopRecording : startRecording}
+                  disabled={!!selectedFile || !!audioBlob}
+                  className={`p-2 rounded-xl border transition shrink-0 disabled:opacity-30 ${recording ? "bg-red-500/20 border-red-500/40 text-red-400 animate-pulse" : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"}`}
+                  title={recording ? "Parar gravação" : "Gravar áudio"}>
+                  <Mic size={14} />
+                </button>
+
+                {!audioBlob && !selectedFile && !recording && (
+                  <input value={text} onChange={e => setText(e.target.value)} placeholder="Mensagem..."
+                    className={`flex-1 px-3 py-2 rounded-xl bg-white/5 border text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 transition ${sendError ? "border-red-500/50 focus:ring-red-500/30" : "border-white/10 focus:ring-emerald-500/50"}`} />
+                )}
+                {(audioBlob || selectedFile || recording) && <div className="flex-1" />}
+
+                {(audioBlob || selectedFile) ? (
+                  <button type="button" onClick={handleSendMedia} disabled={sendingMedia}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-40 shrink-0">
+                    {sendingMedia ? "..." : <Send size={14} />}
+                  </button>
+                ) : (
+                  <button type="submit" disabled={sending || !text.trim() || recording}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-40 shrink-0">
+                    <Send size={14} />
+                  </button>
+                )}
               </div>
             </form>
           </>
@@ -751,11 +897,12 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                 ))}
               </div>
 
+              {/* Datas */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Valor (R$)</label>
-                  <input type="number" min="0" step="0.01" value={perfPagValor} onChange={e => setPerfPagValor(e.target.value)} placeholder="0,00"
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data da venda</label>
+                  <input type="date" value={perfDataVenda} onChange={e => setPerfDataVenda(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
                 <div>
                   <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data do pagamento</label>
@@ -763,6 +910,40 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
               </div>
+
+              {/* Valor */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Valor (R$)</label>
+                  <input type="number" min="0" step="0.01" value={perfPagValor} onChange={e => setPerfPagValor(e.target.value)} placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Taxa cartão (%)</label>
+                  <input type="number" min="0" step="0.01" max="100" value={perfTaxaCartao} onChange={e => setPerfTaxaCartao(e.target.value)} placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Taxas diversas (R$)</label>
+                  <input type="number" min="0" step="0.01" value={perfTaxasDiversas} onChange={e => setPerfTaxasDiversas(e.target.value)} placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+              </div>
+              {/* Valor Líquido calculado */}
+              {perfPagValor && (Number(perfTaxaCartao) > 0 || Number(perfTaxasDiversas) > 0) && (() => {
+                const bruto    = parseFloat(perfPagValor) || 0;
+                const taxaCard = bruto * (parseFloat(perfTaxaCartao) || 0) / 100;
+                const taxaDiv  = parseFloat(perfTaxasDiversas) || 0;
+                const liquido  = bruto - taxaCard - taxaDiv;
+                return (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+                    <span className="text-white/40 text-[10px] font-bold uppercase tracking-wide">Valor Líquido</span>
+                    <span className="text-emerald-300 font-black text-sm">
+                      {liquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Método */}
               <div>
@@ -776,6 +957,21 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
                   ))}
                 </div>
               </div>
+
+              {/* Bandeira do cartão */}
+              {(perfPagMetodo === "Cartão") && (
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1.5">Bandeira do cartão</label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {["Visa", "Master", "Elo", "Amex", "Hipercard", "Outra"].map(b => (
+                      <button key={b} onClick={() => setPerfBandeira(perfBandeira === b ? "" : b)}
+                        className={`py-2 rounded-lg text-[10px] font-bold border transition ${perfBandeira === b ? "bg-violet-600/80 text-white border-violet-500" : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"}`}>
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Observações do pagamento</label>
@@ -904,21 +1100,40 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated }: Pro
           </div>
         )}
 
-        {/* Notes + delete footer */}
+        {/* Notes + actions footer */}
         <div className="px-5 py-3 border-t border-white/10 flex-shrink-0 flex gap-2">
           <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={handleNotesBlur}
             placeholder="Observações internas..." rows={2}
             className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none" />
-          {!confirmDelete ? (
-            <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 transition self-start">
-              <Trash2 size={14} />
+          <div className="flex flex-col gap-1 self-start">
+            {/* Botão pendência financeira */}
+            <button
+              onClick={async () => {
+                const next = !pendencia;
+                setPendencia(next);
+                await updateLeadPendencia(lead.id, next);
+              }}
+              title={pendencia ? "Remover pendência financeira" : "Marcar pendência financeira (nota fiscal / pagamento)"}
+              className={`p-2 rounded-xl border transition ${
+                pendencia
+                  ? "bg-yellow-500/25 border-yellow-500/40 text-yellow-300"
+                  : "bg-white/5 hover:bg-yellow-500/10 border-white/10 text-white/30 hover:text-yellow-400 hover:border-yellow-500/30"
+              }`}
+            >
+              <Receipt size={14} />
             </button>
-          ) : (
-            <div className="flex flex-col gap-1 self-start">
-              <button onClick={handleDelete} className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[10px] font-bold">Deletar</button>
-              <button onClick={() => setConfirmDelete(false)} className="px-2 py-1 rounded-lg bg-white/10 text-white/50 text-[10px]">Cancelar</button>
-            </div>
-          )}
+            {/* Botão deletar */}
+            {!confirmDelete ? (
+              <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 transition">
+                <Trash2 size={14} />
+              </button>
+            ) : (
+              <>
+                <button onClick={handleDelete} className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[10px] font-bold">Deletar</button>
+                <button onClick={() => setConfirmDelete(false)} className="px-2 py-1 rounded-lg bg-white/10 text-white/50 text-[10px]">Cancelar</button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

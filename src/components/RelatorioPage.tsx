@@ -36,23 +36,20 @@ function extractKeywords(messages: string[]): { word: string; count: number }[] 
     .slice(0, 20);
 }
 
-type Period = "7d" | "30d" | "90d";
+type Period = "1d" | "7d" | "30d" | "90d" | "custom";
+
+// Normaliza variações de nome do remetente para exibição consistente
+function normalizeSender(nome: string): string {
+  const n = (nome || "").trim().toLowerCase();
+  if (n === "maria ia" || n === "maria" || n === "ia bot" || n === "bot") return "Maria IA";
+  if (n.includes("thamires") || n.includes("tamires") || n === "secretaria" || n === "secretária") return "Thamires";
+  if (n.includes("mônica") || n.includes("monica")) return "Mônica";
+  if (n.includes("clínica") || n.includes("clinica") || n.includes("pronutro")) return "Clínica (celular)";
+  return nome.trim();
+}
 
 function BRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-}
-
-function periodDates(period: Period) {
-  const now  = new Date();
-  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
-  const from = new Date(now.getTime() - days * 86400000);
-  const prevFrom = new Date(from.getTime() - days * 86400000);
-  return {
-    from:     from.toISOString(),
-    to:       now.toISOString(),
-    prevFrom: prevFrom.toISOString(),
-    prevTo:   from.toISOString(),
-  };
 }
 
 function todayRange() {
@@ -60,6 +57,44 @@ function todayRange() {
   const from = d.toISOString();
   d.setHours(23, 59, 59, 999);
   return { from, to: d.toISOString() };
+}
+
+function yesterdayRange() {
+  const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0);
+  const from = d.toISOString();
+  d.setHours(23, 59, 59, 999);
+  return { from, to: d.toISOString() };
+}
+
+function getDateRange(period: Period, customFrom: string, customTo: string) {
+  if (period === "1d") {
+    const { from, to }     = todayRange();
+    const { from: pf, to: pt } = yesterdayRange();
+    return { from, to, prevFrom: pf, prevTo: pt };
+  }
+  if (period === "custom") {
+    // Garante que o range inclui o dia inteiro no horário local (sem depender de timezone)
+    const [fy, fm, fd] = customFrom.split("-").map(Number);
+    const [ty, tm, td] = customTo.split("-").map(Number);
+    const from    = new Date(fy, fm - 1, fd, 0, 0, 0, 0);
+    const to      = new Date(ty, tm - 1, td, 23, 59, 59, 999);
+    const diffMs  = Math.max(to.getTime() - from.getTime(), 86400000);
+    return {
+      from:     from.toISOString(),
+      to:       to.toISOString(),
+      prevFrom: new Date(from.getTime() - diffMs).toISOString(),
+      prevTo:   from.toISOString(),
+    };
+  }
+  const now  = new Date();
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
+  const from = new Date(now.getTime() - days * 86400000);
+  return {
+    from:     from.toISOString(),
+    to:       now.toISOString(),
+    prevFrom: new Date(from.getTime() - days * 86400000).toISOString(),
+    prevTo:   from.toISOString(),
+  };
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -141,6 +176,11 @@ const FUNIL_STAGES = [
 
 export default function RelatorioPage() {
   const [period, setPeriod]         = useState<Period>("30d");
+  const [customFrom, setCustomFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customTo, setCustomTo]     = useState(() => new Date().toISOString().slice(0, 10));
   const [stats, setStats]           = useState<any>(null);
   const [waStats, setWaStats]       = useState<any>(null);
   const [hoje, setHoje]             = useState<any[]>([]);
@@ -151,11 +191,12 @@ export default function RelatorioPage() {
   const [genMsg, setGenMsg]         = useState("");
 
   const load = useCallback(async () => {
+    if (period === "custom" && (!customFrom || !customTo || customFrom > customTo + "z")) return;
     setLoading(true);
-    const { from, to, prevFrom, prevTo } = periodDates(period);
+    const { from, to, prevFrom, prevTo } = getDateRange(period, customFrom, customTo);
     const { from: todayFrom, to: todayTo } = todayRange();
 
-    const [agRes, prevAgRes, finRes, prevFinRes, leadsRes, hojeRes, insightRes, msgRes, waMsgRes] = await Promise.all([
+    const [agRes, prevAgRes, finRes, prevFinRes, leadsRes, hojeRes, insightRes, msgRes, waMsgRes, hojeWaMsgRes] = await Promise.all([
       supabase.from("pn_agendamentos")
         .select("status, tipo_consulta, nome_paciente, medico:pn_medicos(nome, valor, cor), lead:pn_leads(name, phone)")
         .gte("data_hora", from).lte("data_hora", to),
@@ -187,6 +228,12 @@ export default function RelatorioPage() {
         .select("direction, sender_nome, created_at, lead_id")
         .gte("created_at", from).lte("created_at", to)
         .limit(3000),
+      // Mensagens de hoje para ranking de atendimento diário
+      supabase.from("pn_mensagens")
+        .select("direction, sender_nome, lead_id")
+        .eq("direction", "out")
+        .gte("created_at", todayFrom).lte("created_at", todayTo)
+        .limit(2000),
     ]);
 
     const ags      = agRes.data      || [];
@@ -279,7 +326,7 @@ export default function RelatorioPage() {
           hourMap[h].out++;
           totalOut++;
           if (m.lead_id) leadsComResposta.add(m.lead_id);
-          const sender = m.sender_nome || "Clínica";
+          const sender = normalizeSender(m.sender_nome || "Clínica (celular)");
           senderMap[sender] = (senderMap[sender] || 0) + 1;
         }
       }
@@ -287,7 +334,7 @@ export default function RelatorioPage() {
       // Leads que tiveram contato humano (não Maria IA)
       const leadsComRespostaHumana = new Set<string>();
       for (const m of waMsgs) {
-        if (m.direction === "out" && m.sender_nome && m.sender_nome !== "Maria IA" && m.lead_id) {
+        if (m.direction === "out" && m.sender_nome && normalizeSender(m.sender_nome) !== "Maria IA" && m.lead_id) {
           leadsComRespostaHumana.add(m.lead_id);
         }
       }
@@ -345,16 +392,29 @@ export default function RelatorioPage() {
       setWaStats(null);
     }
 
+    // ── Ranking de atendimento de hoje ────────────────────────────────────────
+    const hojeMsgs = hojeWaMsgRes.data || [];
+    const hojeAtendMap: Record<string, { msgs: number; leads: Set<string> }> = {};
+    for (const m of hojeMsgs) {
+      const sender = normalizeSender(m.sender_nome || "Clínica (celular)");
+      if (!hojeAtendMap[sender]) hojeAtendMap[sender] = { msgs: 0, leads: new Set() };
+      hojeAtendMap[sender].msgs++;
+      if (m.lead_id) hojeAtendMap[sender].leads.add(m.lead_id);
+    }
+    const hojeRanking = Object.entries(hojeAtendMap)
+      .map(([nome, d]) => ({ nome, msgs: d.msgs, leads: d.leads.size }))
+      .sort((a, b) => b.msgs - a.msgs);
+
     setStats({
       receita, deltaReceita, totalAgs, confirmados, realizados,
       noShows, cancelados, taxaNS, deltaAgs,
       stageCount, leadsNoPeriodo, mariaLeads, totalLeads: allLeads.length,
-      medicos, formaMap, topConsultas,
+      medicos, formaMap, topConsultas, hojeRanking,
     });
     setHoje(hojeRes.data || []);
     setInsight(insightRes.data || null);
     setLoading(false);
-  }, [period]);
+  }, [period, customFrom, customTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -376,7 +436,10 @@ export default function RelatorioPage() {
     ? Math.max(...FUNIL_STAGES.map(s => stats.stageCount[s.key] || 0), 1)
     : 1;
 
-  const periodoLabel = period === "7d" ? "últimos 7 dias" : period === "30d" ? "últimos 30 dias" : "últimos 90 dias";
+  const periodoLabel = period === "1d" ? "hoje"
+    : period === "custom"
+    ? `${customFrom.split("-").reverse().join("/")} → ${customTo.split("-").reverse().join("/")}`
+    : period === "7d" ? "últimos 7 dias" : period === "30d" ? "últimos 30 dias" : "últimos 90 dias";
 
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
@@ -388,14 +451,39 @@ export default function RelatorioPage() {
           <p className="text-white/30 text-xs mt-0.5">Dados ao vivo · {periodoLabel}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Presets */}
           <div className="flex rounded-xl overflow-hidden border border-white/10">
+            <button onClick={() => setPeriod("1d")}
+              className={`px-3 py-1.5 text-[11px] font-black transition ${period === "1d" ? "bg-emerald-600 text-white" : "text-white/40 hover:text-white/70"}`}>
+              Hoje
+            </button>
             {(["7d", "30d", "90d"] as Period[]).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 text-[11px] font-black transition ${period === p ? "bg-violet-600 text-white" : "text-white/40 hover:text-white/70"}`}>
                 {p === "7d" ? "7 dias" : p === "30d" ? "30 dias" : "90 dias"}
               </button>
             ))}
+            <button onClick={() => setPeriod("custom")}
+              className={`px-3 py-1.5 text-[11px] font-black transition flex items-center gap-1 ${period === "custom" ? "bg-violet-600 text-white" : "text-white/40 hover:text-white/70"}`}>
+              <Calendar size={10}/> Personalizado
+            </button>
           </div>
+
+          {/* Custom date range */}
+          {period === "custom" && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-xl border border-white/10 bg-white/3">
+              <span className="text-white/30 text-[10px] font-bold shrink-0">De</span>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                className="bg-transparent text-white text-[11px] font-bold focus:outline-none cursor-pointer"
+                style={{ colorScheme: "dark" }}/>
+              <span className="text-white/20 text-[10px] shrink-0">→</span>
+              <span className="text-white/30 text-[10px] font-bold shrink-0">Até</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                className="bg-transparent text-white text-[11px] font-bold focus:outline-none cursor-pointer"
+                style={{ colorScheme: "dark" }}/>
+            </div>
+          )}
+
           <button onClick={load} disabled={loading}
             className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition disabled:opacity-40">
             <RefreshCw size={13} className={`text-white/50 ${loading ? "animate-spin" : ""}`} />
@@ -758,23 +846,21 @@ export default function RelatorioPage() {
                 <div className="space-y-2 border-t border-white/8 pt-3">
                   {Object.entries(waStats.senderMap as Record<string, number>)
                     .sort((a, b) => (b[1] as number) - (a[1] as number))
-                    .filter(([nome]) => !["Bruno", "Claude"].includes(nome))
+                    .filter(([nome]) => !["Bruno", "Claude", "bruno", "claude"].includes(nome.toLowerCase()))
                     .map(([nome, total]) => {
-                      const displayNome = nome === "Tamires" ? "Thamires"
-                        : nome === "Clínica Pronutro" ? "Clínica"
-                        : nome;
                       const pct     = waStats.totalOut > 0 ? Math.round((total as number) / waStats.totalOut * 100) : 0;
                       const isMaria = nome === "Maria IA";
+                      const isCelular = nome === "Clínica (celular)";
                       return (
                         <div key={nome} className="flex items-center gap-3">
-                          <span className={`text-[10px] font-bold w-28 truncate shrink-0 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
-                            {isMaria ? "🤖" : "💬"} {displayNome}
+                          <span className={`text-[10px] font-bold w-36 truncate shrink-0 ${isMaria ? "text-violet-300" : isCelular ? "text-amber-300" : "text-emerald-300"}`}>
+                            {isMaria ? "🤖" : isCelular ? "📱" : "💬"} {nome}
                           </span>
                           <div className="flex-1 h-3 rounded-full overflow-hidden bg-white/5">
                             <div className="h-full rounded-full transition-all duration-700"
                               style={{
                                 width: `${Math.max(pct, 2)}%`,
-                                background: isMaria ? "rgba(139,92,246,0.6)" : "rgba(16,185,129,0.6)",
+                                background: isMaria ? "rgba(139,92,246,0.6)" : isCelular ? "rgba(245,158,11,0.6)" : "rgba(16,185,129,0.6)",
                               }} />
                           </div>
                           <span className="text-white/40 text-[10px] font-mono w-12 text-right shrink-0">{total as number} msg</span>
@@ -783,6 +869,49 @@ export default function RelatorioPage() {
                       );
                     })}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ranking de atendimento hoje ───────────────────────────────── */}
+          {stats.hojeRanking?.length > 0 && (
+            <div className="rounded-2xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="flex items-center gap-2 mb-4">
+                <Users size={13} className="text-emerald-400" />
+                <span className="text-white font-black text-sm uppercase tracking-widest">Atendimento de Hoje</span>
+                <div className="flex-1 h-px bg-white/8 ml-2" />
+                <span className="text-white/20 text-[10px]">{new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" })}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {stats.hojeRanking.map((r: any, i: number) => {
+                  const isMaria   = r.nome === "Maria IA";
+                  const isCelular = r.nome === "Clínica (celular)";
+                  const maxMsgs   = stats.hojeRanking[0]?.msgs || 1;
+                  const pct       = Math.round(r.msgs / maxMsgs * 100);
+                  const MEDAL     = ["🥇","🥈","🥉"];
+                  const color     = isMaria ? "#7c3aed" : isCelular ? "#d97706" : "#059669";
+                  return (
+                    <div key={r.nome} className="rounded-2xl border border-white/10 p-4 flex flex-col gap-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-black text-xs truncate">
+                          {MEDAL[i] ?? "👤"} {r.nome}
+                        </span>
+                        {i === 0 && <span className="text-[9px] font-black text-amber-400 shrink-0">TOP</span>}
+                      </div>
+                      <div>
+                        <p className="text-white font-black text-2xl leading-none">{r.leads}</p>
+                        <p className="text-white/30 text-[10px] font-bold mt-0.5">
+                          {r.leads === 1 ? "paciente atendido" : "pacientes atendidos"}
+                        </p>
+                        <p className="text-white/20 text-[10px]">{r.msgs} mensagens enviadas</p>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/8">
+                        <div className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${pct}%`, backgroundColor: color + "cc" }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

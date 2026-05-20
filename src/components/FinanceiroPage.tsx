@@ -20,6 +20,7 @@ const EMPTY_FORM = {
   nome_paciente: "", medico_id: "", medico_nome: "",
   valor: "", forma_pagamento: "pix", bandeira: "",
   parcelas: "1", data_pagamento: new Date().toISOString().slice(0, 10), observacoes: "",
+  taxa_cartao: "", taxas_diversas: "",
 };
 
 const DB_FIELDS = [
@@ -594,7 +595,7 @@ function ReciboModal({ tx, onClose }: { tx: any; onClose: () => void }) {
 
 type PeriodoMode = "mes_atual" | "mes_anterior" | "ano_atual" | "90dias" | "mes_especifico" | "intervalo" | "tudo";
 
-export default function FinanceiroPage() {
+export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: string | null } = {}) {
   const [transacoes, setTransacoes]     = useState<any[]>([]);
   const [medicos, setMedicos]           = useState<any[]>([]);
   const [medicoFiltro, setMedicoFiltro] = useState("");
@@ -609,7 +610,7 @@ export default function FinanceiroPage() {
   const [somenteIncompletos, setSomenteIncompletos] = useState(false);
   const [gptResult, setGptResult]       = useState<ReturnType<typeof parseSmartQuery> | null>(null);
   const [pendentes, setPendentes]       = useState<any[]>([]);
-  const [showPendentes, setShowPendentes] = useState(true);
+  const [showPendentes, setShowPendentes] = useState(false);
   const [loading, setLoading]           = useState(true);
 
   // Manual entry modal
@@ -621,7 +622,7 @@ export default function FinanceiroPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Patient history modal
-  const [paciente, setPaciente] = useState<string | null>(null);
+  const [paciente, setPaciente] = useState<string | null>(initialPaciente || null);
 
   // Recibo
   const [reciboTx, setReciboTx] = useState<any | null>(null);
@@ -749,6 +750,12 @@ export default function FinanceiroPage() {
   })();
 
   const total       = filtered.reduce((s, t) => s + Number(t.valor || 0), 0);
+  const totalLiquido = filtered.reduce((s, t) => {
+    const bruto   = Number(t.valor || 0);
+    const taxaC   = bruto * (Number(t.taxa_cartao || 0) / 100);
+    const taxaD   = Number(t.taxas_diversas || 0);
+    return s + bruto - taxaC - taxaD;
+  }, 0);
   const ticketMedio = filtered.length > 0 ? total / filtered.length : 0;
 
   const byMedico = medicos
@@ -767,10 +774,10 @@ export default function FinanceiroPage() {
   const maxVal = byMedico[0]?.total || 1;
 
   const statCards = [
-    { label: "Total do Período", value: fmt(total),       icon: DollarSign, color: "from-emerald-500 to-teal-600",  shadow: "shadow-emerald-500/30" },
-    { label: "Ticket Médio",     value: fmt(ticketMedio), icon: TrendingUp, color: "from-sky-500 to-blue-600",      shadow: "shadow-sky-500/30"     },
-    { label: "Pagamentos",       value: filtered.length,  icon: Receipt,    color: "from-violet-500 to-purple-600", shadow: "shadow-violet-500/30"  },
-    { label: "Médicos Ativos",   value: byMedico.length,  icon: CreditCard, color: "from-amber-500 to-orange-600",  shadow: "shadow-amber-500/30"   },
+    { label: "Total Bruto",      value: fmt(total),        icon: DollarSign, color: "from-emerald-500 to-teal-600",  shadow: "shadow-emerald-500/30" },
+    { label: "Total Líquido",    value: fmt(totalLiquido), icon: TrendingUp, color: "from-sky-500 to-blue-600",      shadow: "shadow-sky-500/30"     },
+    { label: "Pagamentos",       value: filtered.length,   icon: Receipt,    color: "from-violet-500 to-purple-600", shadow: "shadow-violet-500/30"  },
+    { label: "Médicos Ativos",   value: byMedico.length,   icon: CreditCard, color: "from-amber-500 to-orange-600",  shadow: "shadow-amber-500/30"   },
   ];
 
   // ── Manual entry ──────────────────────────────────────────────────────────
@@ -798,6 +805,8 @@ export default function FinanceiroPage() {
       parcelas:        parseInt(form.parcelas) || 1,
       data_pagamento:  form.data_pagamento ? `${form.data_pagamento}T12:00:00` : undefined,
       observacoes:     form.observacoes || undefined,
+      taxa_cartao:     form.taxa_cartao ? parseFloat(form.taxa_cartao.replace(",", ".")) : null,
+      taxas_diversas:  form.taxas_diversas ? parseFloat(form.taxas_diversas.replace(",", ".")) : null,
     });
     setSaving(false);
     setShowModal(false);
@@ -1054,20 +1063,52 @@ export default function FinanceiroPage() {
       {/* Filtros + Ações */}
       <div className="rounded-xl border border-white/10 p-3 space-y-2.5" style={{ background: "rgba(255,255,255,0.03)" }}>
 
-        {/* Row 1: period presets + actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {(["mes_atual","mes_anterior","ano_atual","90dias","mes_especifico","intervalo","tudo"] as PeriodoMode[]).map(mode => {
-            const labels: Record<PeriodoMode,string> = {
-              mes_atual: "Este mês", mes_anterior: "Mês anterior", ano_atual: "Este ano",
-              "90dias": "90 dias", mes_especifico: "Mês específico", intervalo: "Intervalo", tudo: "Tudo",
-            };
-            return (
-              <button key={mode} onClick={() => setPeriodoMode(mode)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition border ${periodoMode === mode ? "bg-emerald-600 border-emerald-500 text-white" : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"}`}>
-                {labels[mode]}
-              </button>
-            );
-          })}
+        {/* Row 1: period presets + always-visible pickers + actions */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {([
+            { mode: "mes_atual",    label: "Este mês" },
+            { mode: "mes_anterior", label: "Mês ant." },
+            { mode: "ano_atual",    label: "Ano"      },
+            { mode: "tudo",         label: "Tudo"     },
+          ] as { mode: PeriodoMode; label: string }[]).map(({ mode, label }) => (
+            <button key={mode}
+              onClick={() => { setPeriodoMode(mode); setDataInicio(""); setDataFim(""); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition border ${periodoMode === mode && periodoMode !== "mes_especifico" && periodoMode !== "intervalo" ? "bg-emerald-600 border-emerald-500 text-white" : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"}`}>
+              {label}
+            </button>
+          ))}
+
+          <div className="w-px h-5 bg-white/10 mx-0.5" />
+
+          {/* Month picker — always visible */}
+          <input type="month" value={mesAno}
+            onChange={e => { setMesAno(e.target.value); setPeriodoMode("mes_especifico"); setDataInicio(""); setDataFim(""); }}
+            title="Mês específico"
+            style={{ colorScheme: "dark" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 transition ${periodoMode === "mes_especifico" ? "bg-emerald-600/20 border-emerald-500/50 text-emerald-300" : "bg-white/5 border-white/10 text-white/50"}`}
+          />
+
+          {/* Date range — always visible */}
+          <input type="date" value={dataInicio}
+            onChange={e => { setDataInicio(e.target.value); setPeriodoMode("intervalo"); }}
+            placeholder="De"
+            title="Data início"
+            style={{ colorScheme: "dark" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataInicio ? "bg-sky-600/20 border-sky-500/50 text-sky-300" : "bg-white/5 border-white/10 text-white/40"}`}
+          />
+          <input type="date" value={dataFim}
+            onChange={e => { setDataFim(e.target.value); setPeriodoMode("intervalo"); }}
+            placeholder="Até"
+            title="Data fim"
+            style={{ colorScheme: "dark" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataFim ? "bg-sky-600/20 border-sky-500/50 text-sky-300" : "bg-white/5 border-white/10 text-white/40"}`}
+          />
+          {(dataInicio || dataFim) && (
+            <button onClick={() => { setDataInicio(""); setDataFim(""); setPeriodoMode("mes_atual"); }}
+              className="text-white/30 hover:text-white/60 transition" title="Limpar datas">
+              <X size={12} />
+            </button>
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             <button onClick={exportCSV} disabled={filtered.length === 0}
@@ -1085,28 +1126,6 @@ export default function FinanceiroPage() {
             </button>
           </div>
         </div>
-
-        {/* Row 2: conditional date pickers */}
-        {periodoMode === "mes_especifico" && (
-          <div className="flex items-center gap-2">
-            <span className="text-white/40 text-xs">Mês/Ano:</span>
-            <input type="month" value={mesAno} onChange={e => setMesAno(e.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
-          </div>
-        )}
-        {periodoMode === "intervalo" && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-white/40 text-xs">De:</span>
-            <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
-            <span className="text-white/40 text-xs">Até:</span>
-            <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
-          </div>
-        )}
 
         {/* Row 3: unified search + filters */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -1272,7 +1291,15 @@ export default function FinanceiroPage() {
                         {t.registrado_por === "importacao" && <span className="ml-1.5 text-[9px] text-white/20 font-bold">import</span>}
                         {t.registrado_por === "manual"     && <span className="ml-1.5 text-[9px] text-white/20 font-bold">manual</span>}
                       </td>
-                      <td className="px-4 py-3 text-right text-emerald-400 font-black whitespace-nowrap">{fmt(Number(t.valor))}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <span className="text-emerald-400 font-black">{fmt(Number(t.valor))}</span>
+                        {(Number(t.taxa_cartao) > 0 || Number(t.taxas_diversas) > 0) && (() => {
+                          const bruto   = Number(t.valor);
+                          const taxaC   = bruto * (Number(t.taxa_cartao || 0) / 100);
+                          const taxaD   = Number(t.taxas_diversas || 0);
+                          return <span className="block text-emerald-300/50 text-[10px] font-bold">líq. {fmt(bruto - taxaC - taxaD)}</span>;
+                        })()}
+                      </td>
                       <td className="px-2 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <button onClick={() => setReciboTx(t)}
@@ -1294,7 +1321,10 @@ export default function FinanceiroPage() {
                   <tr className="border-t border-white/10">
                     <td colSpan={3} className="px-4 py-3 text-white/40 text-xs font-bold">TOTAL</td>
                     <td className="hidden sm:table-cell" />
-                    <td className="px-4 py-3 text-right text-emerald-300 font-black text-sm">{fmt(total)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-emerald-300 font-black text-sm">{fmt(total)}</span>
+                      {totalLiquido !== total && <span className="block text-emerald-300/50 text-[10px] font-bold">líq. {fmt(totalLiquido)}</span>}
+                    </td>
                     <td />
                   </tr>
                 </tfoot>
@@ -1369,6 +1399,34 @@ export default function FinanceiroPage() {
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
               </div>
+
+              {/* Taxas */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Taxa cartão (%)</label>
+                  <input type="number" min="0" step="0.01" max="100" value={form.taxa_cartao} onChange={e => handleFormChange("taxa_cartao", e.target.value)}
+                    placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Taxas diversas (R$)</label>
+                  <input type="number" min="0" step="0.01" value={form.taxas_diversas} onChange={e => handleFormChange("taxas_diversas", e.target.value)}
+                    placeholder="0,00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+              </div>
+              {form.valor && (Number(form.taxa_cartao) > 0 || Number(form.taxas_diversas) > 0) && (() => {
+                const bruto   = parseValor(form.valor) || 0;
+                const taxaC   = bruto * (parseFloat(form.taxa_cartao) || 0) / 100;
+                const taxaD   = parseFloat(form.taxas_diversas) || 0;
+                const liquido = bruto - taxaC - taxaD;
+                return (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+                    <span className="text-white/40 text-[10px] font-bold uppercase tracking-wide">Valor Líquido</span>
+                    <span className="text-emerald-300 font-black text-sm">{fmt(liquido)}</span>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>

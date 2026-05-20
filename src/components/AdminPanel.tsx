@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchUsuarios, fetchMedicos, fetchDisponibilidade, upsertDisponibilidade, upsertMedico, desativarMedico } from "../lib/api";
+import { fetchUsuarios, fetchMedicos, fetchDisponibilidade, upsertDisponibilidade, upsertMedico, desativarMedico, updateUsuario, fetchBancos, insertBanco, deleteBanco } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { Plus, RefreshCw, Save, Clock, Edit2, Trash2, X } from "lucide-react";
 import ImportPage from "./ImportPage";
@@ -7,12 +7,20 @@ import ImportPage from "./ImportPage";
 const DIAS = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 const DIAS_ORDER = [1,2,3,4,5,6,0]; // Seg→Dom
 
-type Tab = "usuarios" | "medicos" | "horarios" | "importar";
+type Tab = "usuarios" | "medicos" | "horarios" | "bancos" | "importar";
 
 export default function AdminPanel({ user }: { user: any }) {
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [medicos, setMedicos]   = useState<any[]>([]);
+  const [bancos, setBancos]     = useState<any[]>([]);
   const [tab, setTab]           = useState<Tab>("usuarios");
+
+  // Bancos form
+  const [novoBancoNome, setNovoBancoNome]   = useState("");
+  const [novoBancoTipo, setNovoBancoTipo]   = useState("conta_corrente");
+  const [novoBancoPix,  setNovoBancoPix]    = useState("");
+  const [savingBanco,   setSavingBanco]     = useState(false);
+  const [bancoMsg,      setBancoMsg]        = useState("");
   const [loading, setLoading]   = useState(true);
 
   // Novo usuário
@@ -22,6 +30,13 @@ export default function AdminPanel({ user }: { user: any }) {
   const [novoRole, setNovoRole]     = useState("secretaria");
   const [savingUser, setSavingUser] = useState(false);
   const [userMsg, setUserMsg]       = useState("");
+
+  // Editar usuário existente
+  const [editingUser, setEditingUser]   = useState<any | null>(null);
+  const [editNome, setEditNome]         = useState("");
+  const [editRole, setEditRole]         = useState("");
+  const [savingEdit, setSavingEdit]     = useState(false);
+  const [editMsg, setEditMsg]           = useState("");
 
   // Médico form
   const MEDICO_BLANK = { id: "", nome: "", especialidade: "", valor: "", aceita_convenio: false, cor: "#059669" };
@@ -39,11 +54,34 @@ export default function AdminPanel({ user }: { user: any }) {
 
   async function load() {
     setLoading(true);
-    const [u, m] = await Promise.all([fetchUsuarios(), fetchMedicos()]);
+    const [u, m, b] = await Promise.all([fetchUsuarios(), fetchMedicos(), fetchBancos()]);
     setUsuarios(u);
     setMedicos(m);
+    setBancos(b);
     if (!medicoSel && m.length > 0) setMedicoSel(m[0].id);
     setLoading(false);
+  }
+
+  async function handleSaveBanco(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingBanco(true);
+    setBancoMsg("");
+    const ok = await insertBanco(novoBancoNome, novoBancoTipo, novoBancoPix);
+    setSavingBanco(false);
+    if (ok) {
+      setBancoMsg("✅ Banco adicionado!");
+      setNovoBancoNome(""); setNovoBancoTipo("conta_corrente"); setNovoBancoPix("");
+      load();
+    } else {
+      setBancoMsg("❌ Erro ao salvar.");
+    }
+    setTimeout(() => setBancoMsg(""), 3000);
+  }
+
+  async function handleDeleteBanco(id: string, nome: string) {
+    if (!confirm(`Remover ${nome}?`)) return;
+    await deleteBanco(id);
+    load();
   }
 
   useEffect(() => { load(); }, []);
@@ -107,6 +145,23 @@ export default function AdminPanel({ user }: { user: any }) {
     load();
   }
 
+  async function handleEditUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingUser) return;
+    setSavingEdit(true);
+    setEditMsg("");
+    const ok = await updateUsuario(editingUser.id, { nome: editNome, role: editRole });
+    setSavingEdit(false);
+    if (ok) {
+      setEditMsg("✅ Salvo!");
+      setEditingUser(null);
+      load();
+    } else {
+      setEditMsg("❌ Erro ao salvar.");
+    }
+    setTimeout(() => setEditMsg(""), 3000);
+  }
+
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
     setSavingUser(true);
@@ -159,10 +214,10 @@ export default function AdminPanel({ user }: { user: any }) {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
-          {(["usuarios", "medicos", "horarios", "importar"] as Tab[]).map(t => (
+          {(["usuarios", "medicos", "horarios", "bancos", "importar"] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === t ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60 hover:bg-white/5"}`}>
-              {t === "usuarios" ? "👥 Usuários" : t === "medicos" ? "👨‍⚕️ Médicos" : t === "horarios" ? "🕐 Horários" : "📥 Importar"}
+              {t === "usuarios" ? "👥 Usuários" : t === "medicos" ? "👨‍⚕️ Médicos" : t === "horarios" ? "🕐 Horários" : t === "bancos" ? "🏦 Bancos" : "📥 Importar"}
             </button>
           ))}
         </div>
@@ -174,17 +229,58 @@ export default function AdminPanel({ user }: { user: any }) {
           <div className="space-y-4">
             <div className="space-y-2">
               {usuarios.map(u => (
-                <div key={u.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
-                    {(u.nome || "U")[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-sm">{u.nome}</p>
-                    <p className="text-white/40 text-xs">{u.email}</p>
-                  </div>
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${roleColor[u.role] || "bg-white/10 text-white/50 border-white/10"}`}>
-                    {roleLabel[u.role] || u.role}
-                  </span>
+                <div key={u.id}>
+                  {editingUser?.id === u.id ? (
+                    <form onSubmit={handleEditUser} className="rounded-xl border border-sky-500/25 bg-sky-500/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-white font-bold text-sm">Editar Funcionário</p>
+                        <button type="button" onClick={() => { setEditingUser(null); setEditMsg(""); }}
+                          className="p-1 rounded hover:bg-white/10"><X size={14} className="text-white/40" /></button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome</label>
+                          <input required value={editNome} onChange={e => setEditNome(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
+                        </div>
+                        <div>
+                          <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Função</label>
+                          <select value={editRole} onChange={e => setEditRole(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none">
+                            <option value="secretaria">Secretária</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="medico">Médico</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p className="text-white/30 text-[10px]">Email: {u.email} (não editável aqui)</p>
+                      {editMsg && <p className={`text-xs font-bold ${editMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{editMsg}</p>}
+                      <button type="submit" disabled={savingEdit}
+                        className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition disabled:opacity-50">
+                        {savingEdit ? "Salvando..." : "Salvar"}
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                        {(u.nome || "U")[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-bold text-sm">{u.nome}</p>
+                        <p className="text-white/40 text-xs">{u.email}</p>
+                      </div>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${roleColor[u.role] || "bg-white/10 text-white/50 border-white/10"}`}>
+                        {roleLabel[u.role] || u.role}
+                      </span>
+                      <button
+                        onClick={() => { setEditingUser(u); setEditNome(u.nome || ""); setEditRole(u.role || "secretaria"); setEditMsg(""); }}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 transition"
+                        title="Editar">
+                        <Edit2 size={12} className="text-white/50" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -394,6 +490,64 @@ export default function AdminPanel({ user }: { user: any }) {
               <Save size={14} />
               {savingDisp ? "Salvando..." : "Salvar Horários"}
             </button>
+          </div>
+
+        ) : tab === "bancos" ? (
+          <div className="space-y-4">
+            <p className="text-white/40 text-xs">Configure os bancos e contas que a clínica usa para receber pagamentos. Aparece no fluxo de cobrança.</p>
+
+            {/* Lista de bancos */}
+            <div className="space-y-2">
+              {bancos.length === 0 && <p className="text-white/20 text-xs text-center py-4">Nenhum banco cadastrado ainda</p>}
+              {bancos.map(b => (
+                <div key={b.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                  <span className="text-lg">🏦</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-sm">{b.nome}</p>
+                    <p className="text-white/35 text-xs">{b.tipo === "conta_corrente" ? "Conta Corrente" : b.tipo === "pix" ? "PIX" : b.tipo === "caixa" ? "Caixa" : b.tipo}
+                      {b.chave_pix && ` · ${b.chave_pix}`}
+                    </p>
+                  </div>
+                  <button onClick={() => handleDeleteBanco(b.id, b.nome)}
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 transition"
+                    title="Remover">
+                    <Trash2 size={12} className="text-white/40 hover:text-rose-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Form novo banco */}
+            <form onSubmit={handleSaveBanco} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+              <h3 className="text-white font-bold text-sm flex items-center gap-2"><Plus size={14} /> Novo Banco / Conta</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Nome do banco *</label>
+                  <input required value={novoBancoNome} onChange={e => setNovoBancoNome(e.target.value)} placeholder="Nubank, Caixa, Bradesco..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                </div>
+                <div>
+                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Tipo</label>
+                  <select value={novoBancoTipo} onChange={e => setNovoBancoTipo(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none">
+                    <option value="conta_corrente">Conta Corrente</option>
+                    <option value="pix">PIX</option>
+                    <option value="caixa">Caixa / Dinheiro</option>
+                    <option value="maquininha">Maquininha</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Chave PIX (opcional)</label>
+                  <input value={novoBancoPix} onChange={e => setNovoBancoPix(e.target.value)} placeholder="CPF, e-mail, telefone..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                </div>
+              </div>
+              {bancoMsg && <p className={`text-xs font-bold ${bancoMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{bancoMsg}</p>}
+              <button type="submit" disabled={savingBanco}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50">
+                {savingBanco ? "Salvando..." : "Adicionar Banco"}
+              </button>
+            </form>
           </div>
 
         ) : (
