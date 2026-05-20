@@ -1071,6 +1071,10 @@ export default function Dashboard({ user }: { user: any }) {
             setFinanceiroPatient(patientName);
             setPage("financeiro");
           }}
+          onGoAgenda={() => {
+            setSelected(null);
+            setPage("agenda");
+          }}
         />
       )}
 

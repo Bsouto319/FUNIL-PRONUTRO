@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   onUpdated: () => void;
   onGoFinanceiro?: (patientName: string) => void;
+  onGoAgenda?: () => void;
 }
 
 function fmtFileSize(bytes: number) {
@@ -23,7 +24,7 @@ function fmtFileSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoFinanceiro }: Props) {
+export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoFinanceiro, onGoAgenda }: Props) {
   const [messages, setMessages]   = useState<any[]>([]);
   const [text, setText]           = useState("");
   const [sending, setSending]     = useState(false);
@@ -103,6 +104,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [uploadingNf, setUploadingNf] = useState(false);
   const [deletingNfId, setDeletingNfId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [sendingNfId, setSendingNfId]     = useState<string | null>(null);
   const nfFileRef = useRef<HTMLInputElement>(null);
 
   const refreshMessages = useCallback(async () => {
@@ -319,6 +321,24 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     setDeletingNfId(null);
   }
 
+  async function handleNfSendWhatsApp(nf: any) {
+    setSendingNfId(nf.id);
+    try {
+      const url = await getNotaFiscalUrl(nf.file_path);
+      if (!url) throw new Error("link");
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("fetch");
+      const blob = await resp.blob();
+      const file = new File([blob], nf.file_name, { type: blob.type || "application/octet-stream" });
+      const ok = await sendMediaWhatsApp(lead.phone, file);
+      if (!ok) throw new Error("send");
+    } catch {
+      alert("Erro ao enviar NF pelo WhatsApp.");
+    } finally {
+      setSendingNfId(null);
+    }
+  }
+
   async function handleSaveProfile() {
     setSavingPerf(true);
     const ok = await updateLeadProfile(lead.id, {
@@ -408,8 +428,8 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded-full font-black">✓ Pago</span>
             )}
           </button>
-          <button onClick={() => setTab("agendar")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${tab === "agendar" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60"}`}>
+          <button onClick={() => onGoAgenda ? onGoAgenda() : setTab("agendar")}
+            className="px-4 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap text-white/40 hover:text-white/60 hover:bg-emerald-500/10">
             📅 Agendar
           </button>
           <button onClick={() => setTab("notas")}
@@ -1096,6 +1116,11 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                         title="Baixar / Visualizar"
                         className="p-1.5 rounded-lg hover:bg-sky-500/20 text-white/30 hover:text-sky-400 transition disabled:opacity-40">
                         <Download size={13} />
+                      </button>
+                      <button onClick={() => handleNfSendWhatsApp(nf)} disabled={sendingNfId === nf.id}
+                        title="Enviar NF pelo WhatsApp do paciente"
+                        className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-white/30 hover:text-emerald-400 transition disabled:opacity-40">
+                        {sendingNfId === nf.id ? <span className="text-[9px] text-emerald-400">...</span> : <span className="text-[11px]">📲</span>}
                       </button>
                       <button onClick={() => handleNfDelete(nf)} disabled={deletingNfId === nf.id}
                         title="Excluir"
