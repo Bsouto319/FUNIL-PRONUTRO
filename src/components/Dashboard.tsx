@@ -232,7 +232,7 @@ export default function Dashboard({ user }: { user: any }) {
         try {
           const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-auto-stage", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MTM2NjMsImV4cCI6MjA1Nzk4OTY2M30.TLBbLCx08gkD_RWnMpZ4dBKxnb4wZgm6vTbAFaGRZ3A" },
+            headers: { "Content-Type": "application/json", "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim() },
             body: JSON.stringify({ lead_id: l.id }),
           });
           const data = await res.json();

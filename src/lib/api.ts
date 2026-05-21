@@ -199,7 +199,7 @@ export async function sendMessage(leadId: string, phone: string, text: string, s
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cGhndXNqb2Z1Znd0eWl5dml1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI2NjAzNzksImV4cCI6MjA1ODIzNjM3OX0.7FHQBDanLLvuSqfSBP3MdBU3xkIb3kVMjXSi3trmJh8",
+        "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim(),
       },
       body: JSON.stringify({ lead_id: leadId, phone, text, sender_nome: senderNome }),
     });
