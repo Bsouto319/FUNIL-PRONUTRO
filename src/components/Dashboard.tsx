@@ -794,8 +794,8 @@ export default function Dashboard({ user }: { user: any }) {
                 <CalendarDays size={13} className="text-white/30" />
                 {[
                   { label: "Todos", value: null },
-                  { label: "Hoje", value: new Date().toISOString().slice(0, 10) },
-                  { label: "Ontem", value: (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })() },
+                  { label: "Hoje", value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })() },
+                  { label: "Ontem", value: (() => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })() },
                 ].map(opt => (
                   <button
                     key={opt.label}
