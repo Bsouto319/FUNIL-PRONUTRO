@@ -240,12 +240,12 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
     const brNow      = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const dateStr    = brNow.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-    const onboardNote = `\n\n## PRIMEIRO CONTATO — ONBOARDING
-Novo paciente, primeira mensagem.${fromGoogle ? "\n- ORIGEM: veio pelo Google." : ""}
-${isGreeting
-  ? "- Paciente enviou só uma saudação. Apresente-se brevemente como Maria da ProNutro, mencione as especialidades (nutrologia, emagrecimento, saúde feminina, pediatria, estética) e pergunte como pode ajudar. Mensagem curta e acolhedora."
-  : "- Responda o que o paciente já informou (NÃO repita perguntas já respondidas)"}
-- Faça apenas a próxima pergunta necessária`;
+    const googleLine   = fromGoogle ? "\n- ORIGEM: veio pelo Google." : "";
+    const greetingHint = isGreeting
+      ? "- Paciente enviou apenas uma saudação. Apresente-se brevemente como Maria da ProNutro, mencione as especialidades e pergunte como pode ajudar. Mensagem curta e acolhedora."
+      : "- Responda o que o paciente já informou (NÃO repita perguntas já respondidas).";
+    const onboardNote  = "\n\n## PRIMEIRO CONTATO — ONBOARDING\nNovo paciente, primeira mensagem."
+      + googleLine + "\n" + greetingHint + "\n- Faça apenas a próxima pergunta necessária.";
 
     const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -391,14 +391,25 @@ async function runPoll() {
     const payload = await res.json();
     const all: any[] = payload.messages ?? [];
 
+    const MEDIA_TYPES = ["ImageMessage","AudioMessage","VideoMessage","DocumentMessage","StickerMessage","PttMessage"];
+    function getMediaType(msgType: string): string | null {
+      if (msgType === "ImageMessage")    return "image";
+      if (msgType === "AudioMessage" || msgType === "PttMessage") return "audio";
+      if (msgType === "VideoMessage")    return "video";
+      if (msgType === "DocumentMessage") return "document";
+      if (msgType === "StickerMessage")  return "sticker";
+      return null;
+    }
+
     const newMsgs = all.filter((m: any) => {
       const ts = toMs(m.messageTimestamp);
+      const hasContent = m.text || m.content?.text || m.body || m.content?.URL || MEDIA_TYPES.includes(m.messageType);
       return ts > lastTs && !m.isGroup && m.chatid &&
         !m.chatid.startsWith(OWNER_JID + ":") &&
-        (m.text || m.content?.text || m.body);
+        hasContent && m.messageType !== "ReactionMessage";
     });
 
-    console.log(`pronutro-poll v27: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
+    console.log(`pronutro-poll v28: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
 
     if (!newMsgs.length) {
       await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
@@ -498,12 +509,18 @@ async function runPoll() {
 
       // Salva mensagens inbound (do paciente)
       for (const m of inboundMsgs) {
-        const body = m.text || m.content?.text || m.body || "";
-        const eid  = m.messageid || m.id;
-        if (!body || !eid) continue;
+        const rawBody  = m.text || m.content?.text || m.content?.caption || m.body || "";
+        const mType    = getMediaType(m.messageType);
+        const body     = rawBody || (mType ? `[${mType}]` : "");
+        const eid      = m.messageid || m.id;
+        if (!eid) continue;
         await db.from("pn_mensagens").upsert(
           { lead_id: lead.id, direction: "in", body, external_id: eid,
             sender_nome: null,
+            media_url:      m.content?.URL || null,
+            media_type:     mType,
+            media_mimetype: m.content?.mimetype || null,
+            media_filename: m.content?.fileName || null,
             created_at: new Date(toMs(m.messageTimestamp)).toISOString() },
           { onConflict: "external_id", ignoreDuplicates: true }
         );
