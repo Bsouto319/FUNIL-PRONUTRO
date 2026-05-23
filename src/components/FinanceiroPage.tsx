@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send, Pencil } from "lucide-react";
+import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send, Pencil, BarChart2, CheckSquare, Square, Tag } from "lucide-react";
 import { fetchFinanceiro, fetchMedicos, insertFinanceiro, updateFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
 
 function fmt(val: number) {
@@ -172,6 +172,385 @@ function autoDetectColumns(headers: string[]): Record<string, string> {
     }
   }
   return map;
+}
+
+// ── KPI Report Generator ──────────────────────────────────────────────────────
+
+function generateKPIHtml(opts: {
+  txs:        any[];
+  despesaIds: Set<string>;
+  medicoNome: string;
+  periodo:    string;
+  clinicaNome: string;
+}): string {
+  const { txs, despesaIds, medicoNome, periodo, clinicaNome } = opts;
+
+  const receitas  = txs.filter(t => !despesaIds.has(t.id));
+  const despesas  = txs.filter(t =>  despesaIds.has(t.id));
+
+  const totalBruto    = receitas.reduce((s, t) => s + Number(t.valor || 0), 0);
+  const totalDespesas = despesas.reduce((s, t) => s + Number(t.valor || 0), 0);
+  const totalDeducoes = receitas.reduce((s, t) => {
+    const b = Number(t.valor || 0);
+    return s + b * (Number(t.taxa_cartao || 0) / 100) + Number(t.taxas_diversas || 0);
+  }, 0);
+  const totalLiq   = totalBruto - totalDeducoes - totalDespesas;
+  const ticket     = receitas.length > 0 ? totalBruto / receitas.length : 0;
+
+  const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const fmtD   = (iso: string) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+
+  // por forma
+  const formas: Record<string, number> = {};
+  receitas.forEach(t => { if (t.forma_pagamento) formas[t.forma_pagamento] = (formas[t.forma_pagamento] || 0) + Number(t.valor || 0); });
+  const formaEntries = Object.entries(formas).sort((a, b) => b[1] - a[1]);
+
+  // por tipo
+  const tipos: Record<string, { total: number; count: number }> = {};
+  receitas.forEach(t => {
+    const k = t.tipo_servico || "consulta";
+    tipos[k] = tipos[k] || { total: 0, count: 0 };
+    tipos[k].total += Number(t.valor || 0);
+    tipos[k].count++;
+  });
+  const tipoEntries = Object.entries(tipos).sort((a, b) => b[1].total - a[1].total);
+
+  const maxForma = formaEntries[0]?.[1] || 1;
+  const maxTipo  = tipoEntries[0]?.[1].total || 1;
+
+  const formaBar = formaEntries.map(([f, v]) =>
+    `<div class="bar-row"><div class="bar-label">${f.toUpperCase()}</div>
+     <div class="bar-track"><div class="bar-fill" style="width:${Math.round((v/maxForma)*100)}%"></div></div>
+     <div class="bar-val">${fmtBRL(v)}</div></div>`).join("");
+
+  const tipoBar = tipoEntries.map(([t, d]) =>
+    `<div class="bar-row"><div class="bar-label">${t.charAt(0).toUpperCase()+t.slice(1)}</div>
+     <div class="bar-track"><div class="bar-fill teal" style="width:${Math.round((d.total/maxTipo)*100)}%"></div></div>
+     <div class="bar-val">${fmtBRL(d.total)} <span class="bar-count">${d.count} atend.</span></div></div>`).join("");
+
+  const txRows = txs.map(t => {
+    const isDespesa = despesaIds.has(t.id);
+    const bruto     = Number(t.valor || 0);
+    const taxaC     = bruto * (Number(t.taxa_cartao || 0) / 100);
+    const taxaD     = Number(t.taxas_diversas || 0);
+    const saida     = taxaC + taxaD;
+    const final     = bruto - saida;
+    return `<tr class="${isDespesa ? "row-despesa" : ""}">
+      <td>${fmtD(t.data_venda || t.data_pagamento)}</td>
+      <td>${t.nome_paciente || "—"}</td>
+      <td>${(t.tipo_servico || "consulta").charAt(0).toUpperCase()+(t.tipo_servico||"consulta").slice(1)}</td>
+      <td>${t.forma_pagamento ? t.forma_pagamento.toUpperCase()+(t.parcelas>1?` ${t.parcelas}x`:""):"—"}</td>
+      <td class="num">${isDespesa ? `<span class="despesa-tag">DESPESA</span>` : ""} ${fmtBRL(bruto)}</td>
+      <td class="num ${isDespesa?"despesa":""}">${isDespesa ? `(${fmtBRL(bruto)})` : (saida > 0 ? `(${fmtBRL(saida)})` : "—")}</td>
+      <td class="num bold ${isDespesa?"despesa":""}">${isDespesa ? "—" : fmtBRL(final)}</td>
+      <td>${t.observacoes || "—"}</td>
+    </tr>`;
+  }).join("");
+
+  const gerado = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" });
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>KPI — ${medicoNome} — ${periodo}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a202c; }
+  .page { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+  /* Header */
+  .header { background: linear-gradient(135deg, #0e1f4a 0%, #1a3a6e 100%); color: white; border-radius: 16px; padding: 28px 32px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:center; }
+  .header-left h1 { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+  .header-left p  { font-size: 13px; opacity: 0.6; margin-top: 4px; }
+  .header-right   { text-align: right; }
+  .header-right .period { font-size: 15px; font-weight: 700; color: #7dd3fc; }
+  .header-right .gen    { font-size: 11px; opacity: 0.5; margin-top: 4px; }
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+  .kpi-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .kpi-card .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #718096; margin-bottom: 6px; }
+  .kpi-card .value { font-size: 20px; font-weight: 900; color: #1a202c; line-height: 1; }
+  .kpi-card .sub   { font-size: 10px; color: #a0aec0; margin-top: 4px; }
+  .kpi-card.green .value { color: #059669; }
+  .kpi-card.blue  .value { color: #2563eb; }
+  .kpi-card.red   .value { color: #dc2626; }
+  .kpi-card.purple.value { color: #7c3aed; }
+  /* Sections */
+  .section { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .section h2 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #718096; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  /* Bars */
+  .bar-row  { display:flex; align-items:center; gap:10px; margin-bottom: 10px; }
+  .bar-label{ font-size: 11px; font-weight: 700; color: #4a5568; width: 100px; flex-shrink:0; }
+  .bar-track{ flex:1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #059669, #34d399); border-radius: 4px; }
+  .bar-fill.teal { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+  .bar-val  { font-size: 12px; font-weight: 700; color: #1a202c; width: 130px; text-align:right; flex-shrink:0; }
+  .bar-count{ font-size: 10px; color: #a0aec0; font-weight: 500; }
+  /* DRE */
+  .dre { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+  .dre-item { padding: 14px 20px; }
+  .dre-item:not(:last-child) { border-right: 1px solid #e2e8f0; }
+  .dre-item .dl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #718096; margin-bottom: 6px; }
+  .dre-item .dv { font-size: 22px; font-weight: 900; }
+  .dre-item.green .dv { color: #059669; }
+  .dre-item.red   .dv { color: #dc2626; }
+  .dre-item.blue  .dv { color: #2563eb; }
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f7fafc; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: #718096; padding: 10px 12px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f4f8; vertical-align: top; }
+  tr:hover td { background: #f7fafc; }
+  td.num   { text-align: right; font-variant-numeric: tabular-nums; }
+  td.bold  { font-weight: 700; }
+  td.despesa { color: #dc2626; }
+  tr.row-despesa td { background: #fff5f5; }
+  .despesa-tag { display:inline-block; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; background:#fee2e2; color:#dc2626; border-radius:3px; padding:1px 4px; margin-right:4px; vertical-align:middle; }
+  /* Footer */
+  .footer { text-align: center; color: #a0aec0; font-size: 11px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+  .no-print { display:flex; gap:10px; justify-content:flex-end; margin-bottom:20px; }
+  .btn { padding: 9px 20px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; }
+  .btn-primary { background: #059669; color: white; }
+  .btn-secondary { background: #e2e8f0; color: #4a5568; }
+  @media print {
+    body { background: white; }
+    .page { padding: 0; max-width: 100%; }
+    .no-print { display: none; }
+    .header { border-radius: 0; }
+    .section, .kpi-card { box-shadow: none; border: 1px solid #e2e8f0; }
+  }
+</style></head><body>
+<div class="page">
+  <div class="no-print">
+    <button class="btn btn-secondary" onclick="window.close()">Fechar</button>
+    <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+
+  <div class="header">
+    <div class="header-left">
+      <h1>${clinicaNome}</h1>
+      <p>Relatório de Desempenho — ${medicoNome || "Todos os Médicos"}</p>
+    </div>
+    <div class="header-right">
+      <div class="period">📅 ${periodo}</div>
+      <div class="gen">Gerado em ${gerado}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card green"><div class="label">Receita Bruta</div><div class="value">${fmtBRL(totalBruto)}</div><div class="sub">${receitas.length} atendimentos</div></div>
+    <div class="kpi-card red"><div class="label">Deduções</div><div class="value">${fmtBRL(totalDeducoes)}</div><div class="sub">taxas cartão/outros</div></div>
+    <div class="kpi-card red"><div class="label">Despesas</div><div class="value">${fmtBRL(totalDespesas)}</div><div class="sub">${despesas.length} lançamentos</div></div>
+    <div class="kpi-card blue"><div class="label">Receita Líquida</div><div class="value">${fmtBRL(totalLiq)}</div><div class="sub">após deduções e despesas</div></div>
+    <div class="kpi-card purple"><div class="label">Ticket Médio</div><div class="value">${fmtBRL(ticket)}</div><div class="sub">por atendimento</div></div>
+  </div>
+
+  <div class="section" style="margin-bottom:20px">
+    <h2>DRE — Demonstrativo de Resultado</h2>
+    <div class="dre">
+      <div class="dre-item green"><div class="dl">(+) Receita Bruta</div><div class="dv">${fmtBRL(totalBruto)}</div></div>
+      <div class="dre-item red"><div class="dl">(−) Deduções + Despesas</div><div class="dv">${fmtBRL(totalDeducoes + totalDespesas)}</div></div>
+      <div class="dre-item blue"><div class="dl">(=) Resultado Líquido</div><div class="dv">${fmtBRL(totalLiq)}</div></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="section">
+      <h2>Por Forma de Pagamento</h2>
+      ${formaBar || "<p style='color:#a0aec0;font-size:12px'>Sem dados</p>"}
+    </div>
+    <div class="section">
+      <h2>Por Tipo de Serviço</h2>
+      ${tipoBar || "<p style='color:#a0aec0;font-size:12px'>Sem dados</p>"}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Lançamentos — ${txs.length} registros selecionados</h2>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Paciente</th><th>Tipo</th><th>Forma / Parcelas</th><th style="text-align:right">Vlr Entrada</th><th style="text-align:right">Deduções</th><th style="text-align:right">Vlr Final</th><th>Observações</th></tr>
+      </thead>
+      <tbody>${txRows}</tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    Relatório gerado pelo ProNutro CRM · ${clinicaNome} · ${gerado}<br>
+    Este documento é confidencial e destinado exclusivamente ao profissional indicado.
+  </div>
+</div>
+</body></html>`;
+}
+
+// ── KPIExportModal ────────────────────────────────────────────────────────────
+
+function KPIExportModal({ txs, medicos, onClose }: {
+  txs:     any[];
+  medicos: any[];
+  onClose: () => void;
+}) {
+  const [despesaIds,  setDespesaIds]  = useState<Set<string>>(new Set());
+  const [medicoFiltro, setMedicoFiltro] = useState("");
+  const [periodo,     setPeriodo]     = useState(() => {
+    if (!txs.length) return new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const dates = txs.map(t => t.data_pagamento).filter(Boolean).sort();
+    const from  = new Date(dates[0]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+    const to    = new Date(dates[dates.length - 1]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+    return from === to ? to : `${from} – ${to}`;
+  });
+  const [clinicaNome, setClinicaNome] = useState("ProNutro Clínica");
+
+  const medicoNome = medicoFiltro
+    ? (medicos.find(m => m.id === medicoFiltro)?.nome || "")
+    : "Todos os Médicos";
+
+  const displayTxs = medicoFiltro
+    ? txs.filter(t => t.medico_id === medicoFiltro || (t.medico_nome || "").toLowerCase().includes((medicos.find(m=>m.id===medicoFiltro)?.nome||"").split(" ")[1]?.toLowerCase()||""))
+    : txs;
+
+  const totalBruto    = displayTxs.filter(t => !despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
+  const totalDespesas = displayTxs.filter(t =>  despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
+
+  function toggleDespesa(id: string) {
+    setDespesaIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleGenerate() {
+    const html = generateKPIHtml({ txs: displayTxs, despesaIds, medicoNome, periodo, clinicaNome });
+    const win  = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}>
+      <div className="w-full sm:max-w-2xl max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+        style={{ background: "rgba(10,20,60,0.98)" }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <BarChart2 size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="text-white font-black text-sm">Exportar KPI</p>
+              <p className="text-white/40 text-[10px]">{displayTxs.length} lançamentos selecionados</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          {/* Configurações do relatório */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Médico no Relatório</label>
+              <select value={medicoFiltro} onChange={e => setMedicoFiltro(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40">
+                <option value="">Todos os Médicos</option>
+                {medicos.map(m => <option key={m.id} value={m.id}>{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Período (título)</label>
+              <input value={periodo} onChange={e => setPeriodo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+            </div>
+            <div>
+              <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nome da Clínica</label>
+              <input value={clinicaNome} onChange={e => setClinicaNome(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+            </div>
+          </div>
+
+          {/* Preview KPIs */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Receita (selecionados)", value: totalBruto, color: "text-emerald-400" },
+              { label: "Despesas marcadas",      value: totalDespesas, color: "text-rose-400" },
+              { label: "Resultado Líquido",      value: totalBruto - totalDespesas, color: "text-sky-300" },
+            ].map(c => (
+              <div key={c.label} className="rounded-xl border border-white/8 p-3 text-center" style={{ background: "rgba(255,255,255,0.03)" }}>
+                <p className={`font-black text-base ${c.color}`}>{c.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                <p className="text-white/30 text-[9px] font-bold uppercase mt-1">{c.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Lista de lançamentos com toggle despesa */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-white/40 text-[10px] font-bold uppercase tracking-wide">
+                Lançamentos — marque as despesas para destacá-las no relatório
+              </p>
+              {despesaIds.size > 0 && (
+                <button onClick={() => setDespesaIds(new Set())}
+                  className="text-white/30 hover:text-white/60 text-[10px] transition">
+                  Limpar marcações
+                </button>
+              )}
+            </div>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+              {displayTxs.map(t => {
+                const isDespesa = despesaIds.has(t.id);
+                return (
+                  <div key={t.id}
+                    onClick={() => toggleDespesa(t.id)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition ${
+                      isDespesa
+                        ? "border-rose-500/30 bg-rose-500/8"
+                        : "border-white/8 bg-white/3 hover:bg-white/6"
+                    }`}>
+                    <div className={`shrink-0 w-4 h-4 rounded flex items-center justify-center border transition ${isDespesa ? "bg-rose-500/30 border-rose-500/50" : "border-white/20"}`}>
+                      {isDespesa && <Tag size={9} className="text-rose-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/70 text-xs font-semibold truncate">{t.nome_paciente || "—"}</span>
+                        {isDespesa && <span className="text-[9px] font-black text-rose-400 bg-rose-500/15 px-1.5 py-0.5 rounded-full border border-rose-500/25">DESPESA</span>}
+                      </div>
+                      <p className="text-white/30 text-[10px]">
+                        {t.data_pagamento ? new Date(t.data_pagamento).toLocaleDateString("pt-BR") : "—"}
+                        {t.observacoes ? ` · ${t.observacoes}` : ""}
+                        {t.forma_pagamento ? ` · ${t.forma_pagamento}` : ""}
+                      </p>
+                    </div>
+                    <span className={`font-black text-xs shrink-0 ${isDespesa ? "text-rose-400" : "text-emerald-400"}`}>
+                      {Number(t.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </div>
+                );
+              })}
+              {displayTxs.length === 0 && (
+                <p className="text-white/20 text-xs text-center py-6">Nenhum lançamento encontrado para este médico</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 border-t border-white/10 flex gap-2 shrink-0">
+          <button onClick={onClose}
+            className="px-4 py-2.5 rounded-xl border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-xs font-bold transition">
+            Cancelar
+          </button>
+          <button onClick={handleGenerate} disabled={displayTxs.length === 0}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-black transition shadow-lg shadow-violet-500/30 disabled:opacity-40">
+            <BarChart2 size={13} /> Gerar Relatório KPI
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function fmtFileSize(bytes: number) {
@@ -636,9 +1015,12 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   const [paciente, setPaciente] = useState<string | null>(initialPaciente || null);
 
   // Recibo
-  const [reciboTx,   setReciboTx]   = useState<any | null>(null);
+  const [reciboTx,    setReciboTx]    = useState<any | null>(null);
   // Editing existing transaction
-  const [editingTx,  setEditingTx]  = useState<any | null>(null);
+  const [editingTx,   setEditingTx]   = useState<any | null>(null);
+  // KPI Export selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showKpiExport, setShowKpiExport] = useState(false);
 
   // Import
   const fileRef                                   = useRef<HTMLInputElement>(null);
@@ -1182,6 +1564,17 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition disabled:opacity-30">
               <Download size={12} /> CSV
             </button>
+            <button
+              onClick={() => {
+                if (selectedIds.size === 0) {
+                  setSelectedIds(new Set(filtered.map(t => t.id)));
+                }
+                setShowKpiExport(true);
+              }}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 border border-violet-500/50 text-white text-xs font-black transition shadow shadow-violet-500/30 disabled:opacity-30">
+              <BarChart2 size={12} /> KPI
+            </button>
             <button onClick={() => fileRef.current?.click()}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/30">
               <Upload size={12} /> Importar
@@ -1281,9 +1674,21 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           <div className="py-16 text-center text-white/20 text-sm">Nenhuma transação encontrada</div>
         ) : (
           <div className="overflow-x-auto overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
-            <table className="w-full text-xs min-w-[1100px]">
+            <table className="w-full text-xs min-w-[1180px]">
               <thead className="sticky top-0 z-10" style={{ background: "rgba(14,26,70,0.97)" }}>
                 <tr className="border-b border-white/8">
+                  <th className="px-3 py-2.5 w-8">
+                    <button
+                      onClick={() => {
+                        if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+                        else setSelectedIds(new Set(filtered.map((t: any) => t.id)));
+                      }}
+                      className="text-white/30 hover:text-violet-400 transition flex items-center">
+                      {selectedIds.size > 0 && selectedIds.size === filtered.length
+                        ? <CheckSquare size={13} className="text-violet-400" />
+                        : <Square size={13} />}
+                    </button>
+                  </th>
                   <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Data Venda</th>
                   <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Data Pgto</th>
                   <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Mês</th>
@@ -1311,8 +1716,22 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                   const final  = bruto - saida;
                   const mes    = t.data_pagamento ? new Date(t.data_pagamento).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }) : "—";
                   const tipo   = t.tipo_servico || "consulta";
+                  const isSelected = selectedIds.has(t.id);
                   return (
-                    <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition group">
+                    <tr key={t.id} className={`border-b border-white/[0.04] transition group ${isSelected ? "bg-violet-500/8" : "hover:bg-white/[0.03]"}`}>
+                      <td className="px-3 py-2.5 w-8">
+                        <button
+                          onClick={() => setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            next.has(t.id) ? next.delete(t.id) : next.add(t.id);
+                            return next;
+                          })}
+                          className="text-white/30 hover:text-violet-400 transition flex items-center">
+                          {isSelected
+                            ? <CheckSquare size={13} className="text-violet-400" />
+                            : <Square size={13} />}
+                        </button>
+                      </td>
                       <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">
                         {t.data_venda ? fmtDate(t.data_venda) : (t.data_pagamento ? fmtDate(t.data_pagamento) : "—")}
                       </td>
@@ -1518,6 +1937,39 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Barra flutuante de seleção ─────────────────────────────────────── */}
+      {selectedIds.size > 0 && !showKpiExport && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 rounded-2xl border border-violet-500/40 shadow-2xl shadow-violet-500/20"
+          style={{ background: "rgba(14,26,70,0.97)", backdropFilter: "blur(12px)" }}>
+          <CheckSquare size={16} className="text-violet-400 shrink-0" />
+          <span className="text-white font-black text-sm">{selectedIds.size} selecionado{selectedIds.size !== 1 ? "s" : ""}</span>
+          <span className="text-violet-300 font-bold text-sm">
+            {filtered.filter(t => selectedIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0)
+              .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </span>
+          <div className="w-px h-5 bg-white/15" />
+          <button onClick={() => setShowKpiExport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-black transition">
+            <BarChart2 size={12} /> Gerar KPI
+          </button>
+          <button onClick={() => setSelectedIds(new Set())}
+            className="text-white/30 hover:text-white/70 transition">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal: KPI Export ─────────────────────────────────────────────────── */}
+      {showKpiExport && (
+        <KPIExportModal
+          txs={selectedIds.size > 0
+            ? filtered.filter(t => selectedIds.has(t.id))
+            : filtered}
+          medicos={medicos}
+          onClose={() => setShowKpiExport(false)}
+        />
       )}
 
       {/* ── Modal: Recibo ────────────────────────────────────────────────────── */}
