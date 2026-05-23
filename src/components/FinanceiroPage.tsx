@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send } from "lucide-react";
-import { fetchFinanceiro, fetchMedicos, insertFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
+import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send, Pencil } from "lucide-react";
+import { fetchFinanceiro, fetchMedicos, insertFinanceiro, updateFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
 
 function fmt(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -636,7 +636,9 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   const [paciente, setPaciente] = useState<string | null>(initialPaciente || null);
 
   // Recibo
-  const [reciboTx, setReciboTx] = useState<any | null>(null);
+  const [reciboTx,   setReciboTx]   = useState<any | null>(null);
+  // Editing existing transaction
+  const [editingTx,  setEditingTx]  = useState<any | null>(null);
 
   // Import
   const fileRef                                   = useRef<HTMLInputElement>(null);
@@ -805,11 +807,33 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
     }
   }
 
+  function handleEdit(tx: any) {
+    setEditingTx(tx);
+    setForm({
+      nome_paciente:   tx.nome_paciente   || "",
+      cpf_paciente:    tx.cpf_paciente    || "",
+      medico_id:       tx.medico_id       || "",
+      medico_nome:     tx.medico_nome     || "",
+      valor:           tx.valor           ? String(tx.valor) : "",
+      forma_pagamento: tx.forma_pagamento || "pix",
+      bandeira:        tx.bandeira        || "",
+      banco:           tx.banco           || "",
+      parcelas:        tx.parcelas        ? String(tx.parcelas) : "1",
+      tipo_servico:    tx.tipo_servico    || "consulta",
+      data_venda:      tx.data_venda      ? String(tx.data_venda).slice(0,10) : (tx.data_pagamento ? String(tx.data_pagamento).slice(0,10) : new Date().toISOString().slice(0,10)),
+      data_pagamento:  tx.data_pagamento  ? String(tx.data_pagamento).slice(0,10) : new Date().toISOString().slice(0,10),
+      observacoes:     tx.observacoes     || "",
+      taxa_cartao:     tx.taxa_cartao     ? String(tx.taxa_cartao) : "",
+      taxas_diversas:  tx.taxas_diversas  ? String(tx.taxas_diversas) : "",
+    });
+    setShowModal(true);
+  }
+
   async function handleSave() {
     const valorNum = parseValor(form.valor);
     if (!valorNum || valorNum <= 0) return alert("Informe um valor válido.");
     setSaving(true);
-    await insertFinanceiro({
+    const payload: any = {
       medico_id:       form.medico_id || undefined,
       nome_paciente:   form.nome_paciente || undefined,
       cpf_paciente:    form.cpf_paciente || undefined,
@@ -825,9 +849,15 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
       observacoes:     form.observacoes || undefined,
       taxa_cartao:     form.taxa_cartao ? parseFloat(form.taxa_cartao.replace(",", ".")) : null,
       taxas_diversas:  form.taxas_diversas ? parseFloat(form.taxas_diversas.replace(",", ".")) : null,
-    } as any);
+    };
+    if (editingTx) {
+      await updateFinanceiro(editingTx.id, payload);
+    } else {
+      await insertFinanceiro(payload);
+    }
     setSaving(false);
     setShowModal(false);
+    setEditingTx(null);
     setForm({ ...EMPTY_FORM });
     load();
   }
@@ -1157,7 +1187,7 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
               <Upload size={12} /> Importar
             </button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
-            <button onClick={() => { setForm({ ...EMPTY_FORM }); setShowModal(true); }}
+            <button onClick={() => { setForm({ ...EMPTY_FORM }); setEditingTx(null); setShowModal(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-lg shadow-emerald-500/30">
               <Plus size={13} /> Lançamento
             </button>
@@ -1349,8 +1379,13 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                             title="Emitir Recibo">
                             <FileText size={10} /> Recibo
                           </button>
+                          <button onClick={() => handleEdit(t)}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-amber-500/20 text-white/30 hover:text-amber-400 transition"
+                            title="Editar">
+                            <Pencil size={11} />
+                          </button>
                           <button onClick={() => handleDelete(t.id)} disabled={deletingId === t.id}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
                             title="Excluir">
                             <Trash2 size={11} />
                           </button>
@@ -1511,11 +1546,11 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                   <Plus size={15} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-white font-black text-sm">Novo Lançamento</p>
-                  <p className="text-white/40 text-[10px]">Registrar pagamento manualmente</p>
+                  <p className="text-white font-black text-sm">{editingTx ? "Editar Lançamento" : "Novo Lançamento"}</p>
+                  <p className="text-white/40 text-[10px]">{editingTx ? "Atualize os dados do pagamento" : "Registrar pagamento manualmente"}</p>
                 </div>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition"><X size={16} /></button>
+              <button onClick={() => { setShowModal(false); setEditingTx(null); }} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition"><X size={16} /></button>
             </div>
 
             <div className="p-5 space-y-3 overflow-y-auto max-h-[70vh]">
@@ -1691,13 +1726,13 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
             </div>
 
             <div className="flex gap-2 px-5 pb-5">
-              <button onClick={() => setShowModal(false)}
+              <button onClick={() => { setShowModal(false); setEditingTx(null); }}
                 className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-xs font-bold transition">
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving || !form.valor}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-lg shadow-emerald-500/30 disabled:opacity-50">
-                {saving ? "Salvando..." : "Salvar Lançamento"}
+                {saving ? "Salvando..." : editingTx ? "Atualizar Lançamento" : "Salvar Lançamento"}
               </button>
             </div>
           </div>

@@ -647,6 +647,12 @@ export async function deleteFinanceiro(id: string) {
   if (error) console.error("deleteFinanceiro", error.message);
 }
 
+export async function updateFinanceiro(id: string, payload: Record<string, any>) {
+  const { error } = await supabase.from("pn_financeiro").update(payload).eq("id", id);
+  if (error) console.error("updateFinanceiro", error.message);
+  return !error;
+}
+
 export async function bulkInsertFinanceiro(rows: object[]) {
   const { error } = await supabase.from("pn_financeiro").insert(rows);
   if (error) console.error("bulkInsertFinanceiro", error.message);

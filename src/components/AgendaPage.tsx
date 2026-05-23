@@ -67,11 +67,12 @@ export default function AgendaPage({
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [editTipo,  setEditTipo]  = useState<Record<string,string>>({});
-  const [editValor, setEditValor] = useState<Record<string,string>>({});
-  const [editForma, setEditForma] = useState<Record<string,string>>({});
-  const [editBanco, setEditBanco] = useState<Record<string,string>>({});
-  const [editObs,   setEditObs]   = useState<Record<string,string>>({});
+  const [editTipo,     setEditTipo]     = useState<Record<string,string>>({});
+  const [editValor,    setEditValor]    = useState<Record<string,string>>({});
+  const [editForma,    setEditForma]    = useState<Record<string,string>>({});
+  const [editBanco,    setEditBanco]    = useState<Record<string,string>>({});
+  const [editParcelas, setEditParcelas] = useState<Record<string,string>>({});
+  const [editObs,      setEditObs]      = useState<Record<string,string>>({});
   const [saving,    setSaving]    = useState<string | null>(null);
 
   const [smartCancelLoading, setSmartCancelLoading] = useState<string | null>(null);
@@ -212,16 +213,20 @@ export default function AgendaPage({
     setSaving(a.id);
     await updateAgendamento(a.id, { status:"realizado", tipo_consulta: editTipo[a.id]||"consulta", observacoes: editObs[a.id]||undefined });
     const valorStr = editValor[a.id];
+    const forma    = editForma[a.id] || "PIX";
+    const parc     = parseInt(editParcelas[a.id]) || 1;
     if (valorStr) {
       await insertFinanceiro({
-        lead_id: a.lead_id, medico_id: a.medico_id,
-        nome_paciente: a.lead?.name||a.lead?.whatsapp_name||"",
-        medico_nome: a.medico?.nome||"",
-        valor: parseFloat(valorStr.replace(",",".")),
-        forma_pagamento: editForma[a.id]||"PIX",
-        banco_id: editBanco[a.id]||undefined,
-        data_pagamento: new Date().toISOString(),
-      });
+        lead_id:         a.lead_id,
+        medico_id:       a.medico_id,
+        nome_paciente:   a.lead?.name||a.lead?.whatsapp_name||"",
+        medico_nome:     a.medico?.nome||"",
+        valor:           parseFloat(valorStr.replace(",",".")),
+        forma_pagamento: forma,
+        parcelas:        parc,
+        banco_id:        editBanco[a.id]||undefined,
+        data_pagamento:  new Date().toISOString(),
+      } as any);
     }
     setExpandedId(null);
     await load();
@@ -230,17 +235,22 @@ export default function AgendaPage({
   async function handleRegistrarPagamento(a: any) {
     const valorStr = editValor[a.id];
     if (!valorStr) return;
+    const forma = editForma[a.id] || "PIX";
+    const parc  = parseInt(editParcelas[a.id]) || 1;
     setSaving(a.id + "_pay");
     await insertFinanceiro({
-      lead_id: a.lead_id, medico_id: a.medico_id,
-      nome_paciente: a.lead?.name||a.lead?.whatsapp_name||"",
-      medico_nome: a.medico?.nome||"",
-      valor: parseFloat(valorStr.replace(",",".")),
-      forma_pagamento: editForma[a.id]||"PIX",
-      banco_id: editBanco[a.id]||undefined,
-      data_pagamento: new Date().toISOString(),
-    });
+      lead_id:         a.lead_id,
+      medico_id:       a.medico_id,
+      nome_paciente:   a.lead?.name||a.lead?.whatsapp_name||"",
+      medico_nome:     a.medico?.nome||"",
+      valor:           parseFloat(valorStr.replace(",",".")),
+      forma_pagamento: forma,
+      parcelas:        parc,
+      banco_id:        editBanco[a.id]||undefined,
+      data_pagamento:  new Date().toISOString(),
+    } as any);
     setEditValor(p => ({...p,[a.id]:""}));
+    setEditParcelas(p => ({...p,[a.id]:"1"}));
     setSaving(null);
   }
 
@@ -494,6 +504,8 @@ export default function AgendaPage({
                                 {!isRealizado && (
                                   <div onClick={e => e.stopPropagation()}>
                                     <p className="text-white/30 text-[9px] font-black uppercase mb-1.5">Pagamento</p>
+
+                                    {/* Valor + Forma */}
                                     <div className="flex gap-1.5 mb-1.5">
                                       <div className="relative flex-1">
                                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs font-bold">R$</span>
@@ -501,11 +513,49 @@ export default function AgendaPage({
                                           placeholder="0,00" onClick={e=>e.stopPropagation()}
                                           className="w-full pl-7 pr-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none" />
                                       </div>
-                                      <select value={editForma[a.id]||"PIX"} onChange={e=>setEditForma(p=>({...p,[a.id]:e.target.value}))} onClick={e=>e.stopPropagation()}
+                                      <select value={editForma[a.id]||"PIX"} onChange={e=>{setEditForma(p=>({...p,[a.id]:e.target.value}));setEditParcelas(p=>({...p,[a.id]:"1"}));}} onClick={e=>e.stopPropagation()}
                                         className="px-1.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
                                         {FORMAS.map(f=><option key={f} value={f}>{f}</option>)}
                                       </select>
                                     </div>
+
+                                    {/* Parcelas — só aparece no Cartão Crédito */}
+                                    {(editForma[a.id]||"PIX") === "Cartão Crédito" && (() => {
+                                      const valorNum = parseFloat((editValor[a.id]||"0").replace(",",".")) || 0;
+                                      const parc     = parseInt(editParcelas[a.id]) || 1;
+                                      const mensal   = parc > 0 && valorNum > 0 ? valorNum / parc : 0;
+                                      return (
+                                        <div className="mb-1.5 rounded-lg p-2 border border-violet-500/25" style={{ background:"rgba(139,92,246,0.08)" }}>
+                                          <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-violet-300 text-[9px] font-black uppercase">Parcelamento</span>
+                                            {mensal > 0 && parc > 1 && (
+                                              <span className="text-violet-200 text-[10px] font-black">
+                                                {parc}x de {mensal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex gap-1.5 flex-wrap">
+                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
+                                              const val = valorNum > 0 ? valorNum / n : 0;
+                                              const isActive = parc === n;
+                                              return (
+                                                <button key={n} type="button"
+                                                  onClick={e=>{e.stopPropagation();setEditParcelas(p=>({...p,[a.id]:String(n)}));}}
+                                                  className="px-2 py-1 rounded-md text-[9px] font-black transition"
+                                                  style={{
+                                                    background: isActive?"rgba(139,92,246,0.35)":"rgba(255,255,255,0.05)",
+                                                    color:      isActive?"#c4b5fd":"rgba(255,255,255,0.35)",
+                                                    border:     `1px solid ${isActive?"rgba(139,92,246,0.5)":"rgba(255,255,255,0.08)"}`,
+                                                  }}>
+                                                  {n}x{val > 0 ? ` ${val.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}` : ""}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+
                                     {bancos.length > 0 && (
                                       <select value={editBanco[a.id]||""} onChange={e=>setEditBanco(p=>({...p,[a.id]:e.target.value}))} onClick={e=>e.stopPropagation()}
                                         className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none mb-1.5">
