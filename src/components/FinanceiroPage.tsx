@@ -10,17 +10,28 @@ function fmtDate(iso: string) {
 }
 
 const FORMAS = ["crédito", "débito", "pix", "dinheiro"];
+const TIPOS  = ["consulta", "retorno", "avaliação", "exame", "procedimento", "outro"];
 const FORMA_STYLE: Record<string, string> = {
   crédito:  "bg-violet-500/20 text-violet-300 border-violet-500/30",
   débito:   "bg-sky-500/20 text-sky-300 border-sky-500/30",
   pix:      "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
   dinheiro: "bg-amber-500/20 text-amber-300 border-amber-500/30",
 };
+const TIPO_STYLE: Record<string, string> = {
+  consulta:     "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  retorno:      "bg-teal-500/20 text-teal-300 border-teal-500/30",
+  "avaliação":  "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  exame:        "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  procedimento: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+  outro:        "bg-white/10 text-white/40 border-white/15",
+};
 const EMPTY_FORM = {
-  nome_paciente: "", medico_id: "", medico_nome: "",
-  valor: "", forma_pagamento: "pix", bandeira: "",
-  parcelas: "1", data_pagamento: new Date().toISOString().slice(0, 10), observacoes: "",
-  taxa_cartao: "", taxas_diversas: "",
+  nome_paciente: "", cpf_paciente: "", medico_id: "", medico_nome: "",
+  valor: "", forma_pagamento: "pix", bandeira: "", banco: "",
+  parcelas: "1", tipo_servico: "consulta",
+  data_venda: new Date().toISOString().slice(0, 10),
+  data_pagamento: new Date().toISOString().slice(0, 10),
+  observacoes: "", taxa_cartao: "", taxas_diversas: "",
 };
 
 const DB_FIELDS = [
@@ -773,11 +784,14 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
 
   const maxVal = byMedico[0]?.total || 1;
 
+  const totalDeducoes = total - totalLiquido;
   const statCards = [
-    { label: "Total Bruto",      value: fmt(total),        icon: DollarSign, color: "from-emerald-500 to-teal-600",  shadow: "shadow-emerald-500/30" },
-    { label: "Total Líquido",    value: fmt(totalLiquido), icon: TrendingUp, color: "from-sky-500 to-blue-600",      shadow: "shadow-sky-500/30"     },
-    { label: "Pagamentos",       value: filtered.length,   icon: Receipt,    color: "from-violet-500 to-purple-600", shadow: "shadow-violet-500/30"  },
-    { label: "Médicos Ativos",   value: byMedico.length,   icon: CreditCard, color: "from-amber-500 to-orange-600",  shadow: "shadow-amber-500/30"   },
+    { label: "Receita Bruta",    value: fmt(total),            icon: DollarSign, color: "from-emerald-500 to-teal-600",  shadow: "shadow-emerald-500/30" },
+    { label: "Receita Líquida",  value: fmt(totalLiquido),     icon: TrendingUp, color: "from-sky-500 to-blue-600",      shadow: "shadow-sky-500/30"     },
+    { label: "Deduções",         value: fmt(totalDeducoes),    icon: CreditCard, color: "from-rose-500 to-pink-600",     shadow: "shadow-rose-500/30"    },
+    { label: "Ticket Médio",     value: fmt(ticketMedio),      icon: Receipt,    color: "from-violet-500 to-purple-600", shadow: "shadow-violet-500/30"  },
+    { label: "Atendimentos",     value: filtered.length,       icon: Receipt,    color: "from-amber-500 to-orange-600",  shadow: "shadow-amber-500/30"   },
+    { label: "Médicos Ativos",   value: byMedico.length,       icon: CreditCard, color: "from-indigo-500 to-blue-700",  shadow: "shadow-indigo-500/30"  },
   ];
 
   // ── Manual entry ──────────────────────────────────────────────────────────
@@ -798,16 +812,20 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
     await insertFinanceiro({
       medico_id:       form.medico_id || undefined,
       nome_paciente:   form.nome_paciente || undefined,
+      cpf_paciente:    form.cpf_paciente || undefined,
       medico_nome:     form.medico_nome || undefined,
       valor:           valorNum,
       forma_pagamento: form.forma_pagamento || undefined,
       bandeira:        form.bandeira || undefined,
+      banco:           form.banco || undefined,
       parcelas:        parseInt(form.parcelas) || 1,
+      tipo_servico:    form.tipo_servico || undefined,
+      data_venda:      form.data_venda || undefined,
       data_pagamento:  form.data_pagamento ? `${form.data_pagamento}T12:00:00` : undefined,
       observacoes:     form.observacoes || undefined,
       taxa_cartao:     form.taxa_cartao ? parseFloat(form.taxa_cartao.replace(",", ".")) : null,
       taxas_diversas:  form.taxas_diversas ? parseFloat(form.taxas_diversas.replace(",", ".")) : null,
-    });
+    } as any);
     setSaving(false);
     setShowModal(false);
     setForm({ ...EMPTY_FORM });
@@ -843,17 +861,36 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   }
 
   function exportCSV() {
-    const headers = ["Data", "Paciente", "Médico", "Forma", "Bandeira", "Parcelas", "Valor", "Obs"];
-    const rows = filtered.map(t => [
-      fmtDate(t.data_pagamento),
-      t.nome_paciente || "",
-      t.medico_nome   || "",
-      t.forma_pagamento || "",
-      t.bandeira      || "",
-      t.parcelas      || 1,
-      Number(t.valor).toFixed(2).replace(".", ","),
-      (t.observacoes  || "").replace(/;/g, " "),
-    ]);
+    const headers = [
+      "Data Venda","Data Pgto","Mês","Tipo","Forma Pgto","Paciente","CPF",
+      "Médico","Banco","Bandeira","Parcelas","Vlr Entrada (R$)","Vlr Saída (R$)","Vlr Final (R$)","Obs","Origem"
+    ];
+    const rows = filtered.map(t => {
+      const bruto  = Number(t.valor || 0);
+      const taxaC  = bruto * (Number(t.taxa_cartao || 0) / 100);
+      const taxaD  = Number(t.taxas_diversas || 0);
+      const saida  = taxaC + taxaD;
+      const final  = bruto - saida;
+      const mes    = t.data_pagamento ? new Date(t.data_pagamento).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "";
+      return [
+        t.data_venda     ? fmtDate(t.data_venda)      : (t.data_pagamento ? fmtDate(t.data_pagamento) : ""),
+        t.data_pagamento ? fmtDate(t.data_pagamento)   : "",
+        mes,
+        t.tipo_servico   || "consulta",
+        t.forma_pagamento || "",
+        t.nome_paciente  || "",
+        t.cpf_paciente   || "",
+        t.medico_nome    || "",
+        t.banco          || "",
+        t.bandeira       || "",
+        t.parcelas       || 1,
+        bruto.toFixed(2).replace(".", ","),
+        saida.toFixed(2).replace(".", ","),
+        final.toFixed(2).replace(".", ","),
+        (t.observacoes   || "").replace(/;/g, " "),
+        t.registrado_por || "",
+      ];
+    });
     const csv  = [headers, ...rows].map(r => r.join(";")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
@@ -988,7 +1025,7 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   const previewRows  = showImport ? buildPreviewRows() : [];
 
   return (
-    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
+    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
 
       {/* Lembrete de Cobrança */}
       {pendentes.length > 0 && (
@@ -1046,15 +1083,15 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {statCards.map(({ label, value, icon: Icon, color, shadow }) => (
-          <div key={label} className="rounded-xl border border-white/10 p-4 flex items-center gap-3" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg ${shadow} shrink-0`}>
-              <Icon size={18} className="text-white" />
+          <div key={label} className="rounded-xl border border-white/10 p-3.5 flex items-center gap-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg ${shadow} shrink-0`}>
+              <Icon size={16} className="text-white" />
             </div>
-            <div>
-              <p className="text-white font-black text-lg leading-none">{loading ? "–" : value}</p>
-              <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-0.5">{label}</p>
+            <div className="min-w-0">
+              <p className="text-white font-black text-base leading-none truncate">{loading ? "–" : value}</p>
+              <p className="text-white/40 text-[9px] font-bold uppercase tracking-wider mt-0.5 leading-tight">{label}</p>
             </div>
           </div>
         ))}
@@ -1198,109 +1235,114 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
         )}
       </div>
 
-      {/* Charts + Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {byMedico.length > 0 && (
-          <div className="rounded-xl border border-white/10 p-4" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide mb-3">Receita por Médico</h3>
-            <div className="space-y-3">
-              {byMedico.map(m => (
-                <div key={m.id}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-white/70 font-semibold truncate max-w-[150px]">{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</span>
-                    <span className="text-emerald-400 font-black shrink-0 ml-2">{fmt(m.total)}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
-                      style={{ width: `${(m.total / maxVal) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {filtered.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/10">
-                <h4 className="text-white/40 text-[10px] font-bold uppercase tracking-wide mb-2">Por Forma</h4>
-                <div className="space-y-1.5">
-                  {FORMAS.map(f => {
-                    const tot = filtered.filter(t => t.forma_pagamento === f).reduce((s, t) => s + Number(t.valor || 0), 0);
-                    if (!tot) return null;
-                    return (
-                      <div key={f} className="flex justify-between items-center">
-                        <span className={`px-2 py-0.5 rounded-full border font-black text-[9px] ${FORMA_STYLE[f]}`}>{f.toUpperCase()}</span>
-                        <span className="text-white/60 font-bold text-[11px]">{fmt(tot)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+      {/* ── Tabela de Transações — full width ── */}
+      <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
+        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide">Lançamentos</h3>
+            <span className="text-[10px] text-white/30 font-bold">{filtered.length} registros</span>
           </div>
-        )}
+          {busca && <span className="text-xs text-emerald-400/70">filtrado: "{busca}"</span>}
+        </div>
 
-        <div className={`rounded-xl border border-white/10 overflow-hidden ${byMedico.length > 0 ? "lg:col-span-2" : "lg:col-span-3"}`}
-          style={{ background: "rgba(255,255,255,0.04)" }}>
-          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide">Transações</h3>
-            {busca && <span className="text-xs text-emerald-400/70">filtrado: "{busca}"</span>}
-          </div>
-
-          {loading ? (
-            <div className="py-12 text-center text-white/30 text-sm">Carregando...</div>
-          ) : filtered.length === 0 ? (
-            <div className="py-12 text-center text-white/20 text-sm">Nenhuma transação encontrada</div>
-          ) : (
-            <div className="overflow-x-auto overflow-y-auto max-h-[520px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10" style={{ background: "rgba(14,26,70,0.97)" }}>
-                  <tr className="border-b border-white/5">
-                    <th className="text-left px-4 py-2.5 text-white/30 font-bold">Data</th>
-                    <th className="text-left px-4 py-2.5 text-white/30 font-bold">Paciente</th>
-                    <th className="text-left px-4 py-2.5 text-white/30 font-bold hidden sm:table-cell">Médico</th>
-                    <th className="text-left px-4 py-2.5 text-white/30 font-bold hidden sm:table-cell">Pagamento</th>
-                    <th className="text-right px-4 py-2.5 text-white/30 font-bold">Valor</th>
-                    <th className="px-2 py-2.5" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(t => (
-                    <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.03] transition group">
-                      <td className="px-4 py-3 text-white/50 whitespace-nowrap">{fmtDate(t.data_pagamento)}</td>
-                      <td className="px-4 py-3 max-w-[130px]">
-                        {t.nome_paciente ? (
-                          <button onClick={() => setPaciente(t.nome_paciente)}
-                            className="text-white/80 font-semibold text-xs hover:text-emerald-300 hover:underline text-left truncate max-w-full flex items-center gap-1 group">
-                            <span className="truncate">{t.nome_paciente}</span>
-                            <ChevronRight size={10} className="shrink-0 opacity-0 group-hover:opacity-100 text-emerald-400" />
-                          </button>
-                        ) : <span className="text-white/30 text-xs">—</span>}
-                        {t.observacoes && <span className="block text-white/30 text-[10px] font-normal truncate">{t.observacoes}</span>}
+        {loading ? (
+          <div className="py-16 text-center text-white/30 text-sm">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-white/20 text-sm">Nenhuma transação encontrada</div>
+        ) : (
+          <div className="overflow-x-auto overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
+            <table className="w-full text-xs min-w-[1100px]">
+              <thead className="sticky top-0 z-10" style={{ background: "rgba(14,26,70,0.97)" }}>
+                <tr className="border-b border-white/8">
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Data Venda</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Data Pgto</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Mês</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Tipo</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Forma Pgto</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Paciente</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">CPF</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Médico</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Banco/Bandeira</th>
+                  <th className="text-right px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Vlr Entrada</th>
+                  <th className="text-right px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Vlr Saída</th>
+                  <th className="text-center px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Parc.</th>
+                  <th className="text-right px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Vlr Final</th>
+                  <th className="text-left px-3 py-2.5 text-white/35 font-bold whitespace-nowrap">Descrição</th>
+                  <th className="text-center px-2 py-2.5 text-white/35 font-bold whitespace-nowrap">NF</th>
+                  <th className="px-2 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(t => {
+                  const bruto  = Number(t.valor || 0);
+                  const taxaC  = bruto * (Number(t.taxa_cartao || 0) / 100);
+                  const taxaD  = Number(t.taxas_diversas || 0);
+                  const saida  = taxaC + taxaD;
+                  const final  = bruto - saida;
+                  const mes    = t.data_pagamento ? new Date(t.data_pagamento).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }) : "—";
+                  const tipo   = t.tipo_servico || "consulta";
+                  return (
+                    <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition group">
+                      <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">
+                        {t.data_venda ? fmtDate(t.data_venda) : (t.data_pagamento ? fmtDate(t.data_pagamento) : "—")}
                       </td>
-                      <td className="px-4 py-3 text-white/50 hidden sm:table-cell max-w-[140px] truncate">
-                        {(t.medico_nome || "—").replace(/^(Dr\.|Dra\.) /, "")}
+                      <td className="px-3 py-2.5 text-white/40 whitespace-nowrap">
+                        {t.data_pagamento ? fmtDate(t.data_pagamento) : "—"}
                       </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
+                      <td className="px-3 py-2.5 text-white/35 whitespace-nowrap capitalize">{mes}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${TIPO_STYLE[tipo] || "bg-white/10 text-white/40 border-white/15"}`}>
+                          {tipo.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {t.forma_pagamento ? (
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${FORMA_STYLE[t.forma_pagamento] || "bg-white/10 text-white/50 border-white/20"}`}>
                             {t.forma_pagamento.toUpperCase()}
-                            {t.bandeira   ? ` · ${t.bandeira}` : ""}
-                            {t.parcelas > 1 ? ` ${t.parcelas}x` : ""}
                           </span>
-                        ) : "—"}
-                        {t.registrado_por === "importacao" && <span className="ml-1.5 text-[9px] text-white/20 font-bold">import</span>}
-                        {t.registrado_por === "manual"     && <span className="ml-1.5 text-[9px] text-white/20 font-bold">manual</span>}
+                        ) : <span className="text-white/20">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <span className="text-emerald-400 font-black">{fmt(Number(t.valor))}</span>
-                        {(Number(t.taxa_cartao) > 0 || Number(t.taxas_diversas) > 0) && (() => {
-                          const bruto   = Number(t.valor);
-                          const taxaC   = bruto * (Number(t.taxa_cartao || 0) / 100);
-                          const taxaD   = Number(t.taxas_diversas || 0);
-                          return <span className="block text-emerald-300/50 text-[10px] font-bold">líq. {fmt(bruto - taxaC - taxaD)}</span>;
-                        })()}
+                      <td className="px-3 py-2.5 max-w-[140px]">
+                        {t.nome_paciente ? (
+                          <button onClick={() => setPaciente(t.nome_paciente)}
+                            className="text-white/80 font-semibold hover:text-emerald-300 hover:underline text-left truncate max-w-full flex items-center gap-1 group/pac">
+                            <span className="truncate">{t.nome_paciente}</span>
+                            <ChevronRight size={9} className="shrink-0 opacity-0 group-hover/pac:opacity-100 text-emerald-400" />
+                          </button>
+                        ) : <span className="text-white/20">—</span>}
                       </td>
-                      <td className="px-2 py-3 whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-white/35 whitespace-nowrap font-mono text-[10px]">
+                        {t.cpf_paciente || <span className="text-white/15">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-white/50 max-w-[120px] truncate whitespace-nowrap">
+                        {(t.medico_nome || "—").replace(/^(Dr\.|Dra\.) /, "")}
+                      </td>
+                      <td className="px-3 py-2.5 text-white/40 whitespace-nowrap text-[10px]">
+                        {[t.banco, t.bandeira && `${t.bandeira}${t.parcelas > 1 ? ` ${t.parcelas}x` : ""}`].filter(Boolean).join(" · ") || <span className="text-white/15">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <span className="text-emerald-400 font-black">{fmt(bruto)}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {saida > 0
+                          ? <span className="text-rose-400/80 font-bold">({fmt(saida)})</span>
+                          : <span className="text-white/15">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                        {t.parcelas > 1
+                          ? <span className="text-violet-300 font-black text-[10px]">{t.parcelas}x</span>
+                          : <span className="text-white/20 text-[10px]">1x</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <span className={`font-black ${saida > 0 ? "text-sky-300" : "text-emerald-400"}`}>{fmt(final)}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-white/35 max-w-[160px] truncate text-[11px]">
+                        {t.observacoes || <span className="text-white/15">—</span>}
+                      </td>
+                      <td className="px-2 py-2.5 text-center">
+                        <span className="text-white/15 text-[10px]">—</span>
+                      </td>
+                      <td className="px-2 py-2.5 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <button onClick={() => setReciboTx(t)}
                             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 text-[10px] font-black transition border border-sky-500/25"
@@ -1315,24 +1357,133 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot className="sticky bottom-0" style={{ background: "rgba(14,26,70,0.97)" }}>
-                  <tr className="border-t border-white/10">
-                    <td colSpan={3} className="px-4 py-3 text-white/40 text-xs font-bold">TOTAL</td>
-                    <td className="hidden sm:table-cell" />
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-emerald-300 font-black text-sm">{fmt(total)}</span>
-                      {totalLiquido !== total && <span className="block text-emerald-300/50 text-[10px] font-bold">líq. {fmt(totalLiquido)}</span>}
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </tbody>
+              <tfoot className="sticky bottom-0" style={{ background: "rgba(14,26,70,0.97)" }}>
+                <tr className="border-t border-white/15">
+                  <td colSpan={9} className="px-3 py-3 text-white/40 text-xs font-bold uppercase tracking-wide">TOTAIS DO PERÍODO</td>
+                  <td className="px-3 py-3 text-right">
+                    <span className="text-emerald-300 font-black">{fmt(total)}</span>
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <span className="text-rose-400/80 font-black">{totalDeducoes > 0 ? `(${fmt(totalDeducoes)})` : "—"}</span>
+                  </td>
+                  <td />
+                  <td className="px-3 py-3 text-right">
+                    <span className="text-sky-300 font-black">{fmt(totalLiquido)}</span>
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* ── Análise Financeira — seção inferior ── */}
+      {!loading && filtered.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Receita por Médico */}
+          <div className="lg:col-span-2 rounded-xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide mb-4">Receita por Médico</h3>
+            {byMedico.length === 0 ? (
+              <p className="text-white/20 text-xs py-4 text-center">Nenhum dado de médico no período</p>
+            ) : (
+              <div className="space-y-4">
+                {byMedico.map((m, idx) => {
+                  const pct        = Math.round((m.total / total) * 100);
+                  const qtd        = filtered.filter(t => t.medico_id === m.id || norm(t.medico_nome || "").includes(norm(m.nome.replace(/^(dr\.|dra\.)\s*/i,"").split(" ")[0]))).length;
+                  const ticket     = qtd > 0 ? m.total / qtd : 0;
+                  const colors     = ["from-emerald-500 to-teal-400","from-sky-500 to-blue-400","from-violet-500 to-purple-400","from-amber-500 to-orange-400","from-rose-500 to-pink-400"];
+                  const barColor   = colors[idx % colors.length];
+                  return (
+                    <div key={m.id}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${barColor} shrink-0`} />
+                          <span className="text-white/80 font-bold text-sm truncate">{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</span>
+                        </div>
+                        <div className="flex items-center gap-4 shrink-0 ml-3">
+                          <span className="text-white/30 text-[10px]">{qtd} atend. · ticket {fmt(ticket)}</span>
+                          <span className="text-white/40 text-[11px] font-bold w-8 text-right">{pct}%</span>
+                          <span className="text-emerald-400 font-black text-sm w-24 text-right">{fmt(m.total)}</span>
+                        </div>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                        <div className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all`}
+                          style={{ width: `${(m.total / maxVal) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* DRE simplificado */}
+            <div className="mt-5 pt-4 border-t border-white/8 grid grid-cols-3 gap-3">
+              {[
+                { label: "Receita Bruta",   value: total,        color: "text-emerald-400" },
+                { label: "(-) Deduções",    value: -totalDeducoes, color: "text-rose-400"  },
+                { label: "(=) Líquido",     value: totalLiquido, color: "text-sky-300"     },
+              ].map(c => (
+                <div key={c.label} className="rounded-lg p-3 border border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <p className="text-white/35 text-[9px] font-bold uppercase tracking-wide mb-1">{c.label}</p>
+                  <p className={`font-black text-sm ${c.color}`}>{fmt(Math.abs(c.value))}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Por Forma de Pagamento */}
+          <div className="rounded-xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide mb-4">Por Forma de Pagamento</h3>
+            <div className="space-y-3">
+              {FORMAS.map(f => {
+                const txsFo = filtered.filter(t => t.forma_pagamento === f);
+                const tot   = txsFo.reduce((s, t) => s + Number(t.valor || 0), 0);
+                if (!tot) return null;
+                const pct   = Math.round((tot / total) * 100);
+                return (
+                  <div key={f}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${FORMA_STYLE[f]}`}>{f.toUpperCase()}</span>
+                        <span className="text-white/30 text-[10px]">{txsFo.length} lançamentos</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/35 text-[10px]">{pct}%</span>
+                        <span className="text-white/70 font-black text-xs">{fmt(tot)}</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-white/20 to-white/10 transition-all"
+                        style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Ticket médio por forma */}
+            <div className="mt-4 pt-4 border-t border-white/8 space-y-2">
+              <p className="text-white/30 text-[9px] font-bold uppercase tracking-wide">Ticket Médio por Forma</p>
+              {FORMAS.map(f => {
+                const txsFo = filtered.filter(t => t.forma_pagamento === f);
+                if (!txsFo.length) return null;
+                const med = txsFo.reduce((s, t) => s + Number(t.valor || 0), 0) / txsFo.length;
+                return (
+                  <div key={f} className="flex justify-between text-[11px]">
+                    <span className="text-white/40 capitalize">{f}</span>
+                    <span className="text-white/70 font-bold">{fmt(med)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal: Recibo ────────────────────────────────────────────────────── */}
       {reciboTx && (
@@ -1367,7 +1518,9 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition"><X size={16} /></button>
             </div>
 
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3 overflow-y-auto max-h-[70vh]">
+
+              {/* Paciente + CPF */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Paciente</label>
@@ -1375,6 +1528,16 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                     placeholder="Nome do paciente"
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">CPF</label>
+                  <input value={form.cpf_paciente} onChange={e => handleFormChange("cpf_paciente", e.target.value)}
+                    placeholder="000.000.000-00"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 font-mono" />
+                </div>
+              </div>
+
+              {/* Médico + Tipo */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Médico</label>
                   <select value={form.medico_id} onChange={e => handleFormChange("medico_id", e.target.value)}
@@ -1384,9 +1547,18 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                     {medicos.map(m => <option key={m.id} value={m.id}>{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Tipo de Serviço</label>
+                  <select value={form.tipo_servico} onChange={e => handleFormChange("tipo_servico", e.target.value)}
+                    style={{ colorScheme: 'dark' }}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40">
+                    {TIPOS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Valor + Data Venda + Data Pgto */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Valor (R$)</label>
                   <input type="number" min="0" step="0.01" value={form.valor} onChange={e => handleFormChange("valor", e.target.value)}
@@ -1394,14 +1566,25 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
                 <div>
-                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data</label>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data Venda</label>
+                  <input type="date" value={form.data_venda} onChange={e => handleFormChange("data_venda", e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Data Pgto</label>
                   <input type="date" value={form.data_pagamento} onChange={e => handleFormChange("data_pagamento", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                 </div>
               </div>
 
-              {/* Taxas */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Banco + Taxas */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Banco</label>
+                  <input value={form.banco} onChange={e => handleFormChange("banco", e.target.value)}
+                    placeholder="Nubank, Itaú..."
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                </div>
                 <div>
                   <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Taxa cartão (%)</label>
                   <input type="number" min="0" step="0.01" max="100" value={form.taxa_cartao} onChange={e => handleFormChange("taxa_cartao", e.target.value)}
