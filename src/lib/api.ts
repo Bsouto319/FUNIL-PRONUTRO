@@ -960,9 +960,12 @@ export async function sendMediaWhatsApp(phone: string, file: File): Promise<bool
   try {
     const base64   = await blobToBase64(file);
     const isImage  = file.type.startsWith("image/");
-    const endpoint = isImage ? "/send/image" : "/send/document";
+    const isVideo  = file.type.startsWith("video/");
+    const endpoint = isImage ? "/send/image" : isVideo ? "/send/video" : "/send/document";
     const body     = isImage
       ? { number: phone, image: base64, caption: file.name }
+      : isVideo
+      ? { number: phone, video: base64, caption: file.name }
       : { number: phone, document: base64, fileName: file.name };
     const res = await fetch(`${baseUrl}${endpoint}`, {
       method: "POST",

@@ -562,7 +562,30 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                             {isMaria ? "🤖 Maria IA" : `💬 ${m.sender_nome}`}
                           </p>
                         )}
-                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        {m.media_type === "image" && m.media_url ? (
+                          <a href={m.media_url} target="_blank" rel="noreferrer">
+                            <img src={m.media_url} alt={m.media_filename || "imagem"} className="rounded-lg max-w-full max-h-60 object-cover mb-1 cursor-zoom-in" />
+                          </a>
+                        ) : m.media_type === "audio" && m.media_url ? (
+                          <audio controls src={m.media_url} className="w-full max-w-[220px] mb-1" />
+                        ) : m.media_type === "video" && m.media_url ? (
+                          <video controls src={m.media_url} className="rounded-lg max-w-full max-h-60 mb-1" />
+                        ) : m.media_type === "document" && m.media_url ? (
+                          <a href={m.media_url} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 transition mb-1">
+                            <FileText size={14} className="shrink-0 text-sky-300" />
+                            <span className="text-xs truncate max-w-[160px]">{m.media_filename || m.body || "Documento"}</span>
+                            <Download size={12} className="shrink-0 text-white/40 ml-auto" />
+                          </a>
+                        ) : m.media_type === "sticker" && m.media_url ? (
+                          <img src={m.media_url} alt="sticker" className="w-20 h-20 object-contain mb-1" />
+                        ) : null}
+                        {m.body && !["image","video","sticker"].includes(m.media_type) && (
+                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                        )}
+                        {m.body && m.media_type === "image" && m.body !== "[image]" && (
+                          <p className="whitespace-pre-wrap break-words text-white/70 italic text-[11px] mt-0.5">{m.body}</p>
+                        )}
                         <p className={`text-[9px] mt-0.5 ${timeClr}`}>{timeStr}</p>
                       </div>
                       {/* Botão encaminhar — lado direito para mensagens recebidas */}
@@ -580,7 +603,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               <div ref={bottomRef} />
             </div>
             <form onSubmit={handleSend} className="flex flex-col gap-1.5 px-5 py-3 border-t border-white/10 flex-shrink-0">
-              <input ref={fileInputRef} type="file" className="hidden"
+              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" className="hidden"
                 onChange={e => { if (e.target.files?.[0]) { setSelectedFile(e.target.files[0]); setAudioBlob(null); } }} />
 
               {sendError && (

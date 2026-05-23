@@ -57,10 +57,6 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
             return isSameDay(ref, dayFilter);
           })
           .sort((a, b) => {
-            // Em Atendimento: ordem de chegada (mais antigo primeiro = esperando mais)
-            if (key === "em_atendimento") {
-              return new Date(a.last_message_at ?? a.created_at).getTime() - new Date(b.last_message_at ?? b.created_at).getTime();
-            }
             return new Date(b.last_message_at ?? b.created_at).getTime() - new Date(a.last_message_at ?? a.created_at).getTime();
           });
 
