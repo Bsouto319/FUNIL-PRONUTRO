@@ -56,7 +56,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
   const [quickReplies, setQuickReplies]   = useState<any[]>([]);
-  const [showQR, setShowQR]               = useState(true);
+  const [showQR, setShowQR]               = useState(false);
   const [qrSearch, setQrSearch]           = useState("");
   const [showNewQR, setShowNewQR]         = useState(false);
   const [newQRTitle, setNewQRTitle]       = useState("");
@@ -467,24 +467,25 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                   </div>
 
                   {/* Lista */}
-                  <div className="space-y-1 max-h-44 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+                  <div className="space-y-2 max-h-52 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
                     {quickReplies.filter(q =>
                       !qrSearch || q.title.toLowerCase().includes(qrSearch.toLowerCase()) || q.body.toLowerCase().includes(qrSearch.toLowerCase())
                     ).map(q => (
-                      <div key={q.id} className="group flex items-start gap-2 px-3 py-2 rounded-lg bg-white/3 hover:bg-white/6 border border-white/5 hover:border-emerald-500/20 transition cursor-pointer"
+                      <div key={q.id} className="group flex items-start gap-2.5 px-3 py-3 rounded-xl bg-white/4 hover:bg-white/7 border border-white/8 hover:border-emerald-500/30 transition cursor-pointer"
                         onClick={() => useQuickReply(q.body)}>
+                        <Zap size={13} className="shrink-0 text-emerald-400/70 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-black text-emerald-300 truncate">{q.title}</p>
-                          <p className="text-[10px] text-white/40 truncate">{q.body}</p>
+                          <p className="text-xs font-black text-emerald-300 mb-1">{q.title}</p>
+                          <p className="text-[11px] text-white/50 leading-relaxed line-clamp-2">{q.body}</p>
                         </div>
                         <button type="button" onClick={e => { e.stopPropagation(); handleDeleteQR(q.id); }}
-                          className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-rose-400 transition">
-                          <Trash2 size={10} />
+                          className="shrink-0 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400 transition">
+                          <Trash2 size={11} />
                         </button>
                       </div>
                     ))}
                     {!quickReplies.length && (
-                      <p className="text-center text-white/20 text-xs py-3">Nenhuma resposta salva ainda</p>
+                      <p className="text-center text-white/20 text-xs py-4">Nenhuma resposta salva ainda</p>
                     )}
                   </div>
 
@@ -516,7 +517,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
               {messages.length === 0 && (
                 <p className="text-white/20 text-xs text-center py-8">Sem mensagens ainda</p>
               )}
@@ -547,7 +548,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                         <div className="flex-1 h-px bg-white/8" />
                       </div>
                     )}
-                    <div className={`group flex items-end gap-1 ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                    <div className={`group flex items-end gap-1 ${isOut ? "justify-end" : "justify-start"}`}>
                       {/* Botão encaminhar — lado esquerdo para mensagens de saída */}
                       {isOut && m.body && (
                         <button type="button" onClick={() => handleForward(m.body)}
@@ -556,37 +557,37 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                           <CornerUpLeft size={12} />
                         </button>
                       )}
-                      <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${bubble}`}>
+                      <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-[13px] leading-[1.65] ${bubble}`}>
                         {isOut && m.sender_nome && (
-                          <p className={`text-[9px] font-black mb-0.5 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
+                          <p className={`text-[10px] font-black mb-1 ${isMaria ? "text-violet-300" : "text-emerald-300"}`}>
                             {isMaria ? "🤖 Maria IA" : `💬 ${m.sender_nome}`}
                           </p>
                         )}
                         {m.media_type === "image" && m.media_url ? (
                           <a href={m.media_url} target="_blank" rel="noreferrer">
-                            <img src={m.media_url} alt={m.media_filename || "imagem"} className="rounded-lg max-w-full max-h-60 object-cover mb-1 cursor-zoom-in" />
+                            <img src={m.media_url} alt={m.media_filename || "imagem"} className="rounded-lg max-w-full max-h-60 object-cover mb-2 cursor-zoom-in" />
                           </a>
                         ) : m.media_type === "audio" && m.media_url ? (
-                          <audio controls src={m.media_url} className="w-full max-w-[220px] mb-1" />
+                          <audio controls src={m.media_url} className="w-full max-w-[220px] mb-2" />
                         ) : m.media_type === "video" && m.media_url ? (
-                          <video controls src={m.media_url} className="rounded-lg max-w-full max-h-60 mb-1" />
+                          <video controls src={m.media_url} className="rounded-lg max-w-full max-h-60 mb-2" />
                         ) : m.media_type === "document" && m.media_url ? (
                           <a href={m.media_url} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 transition mb-1">
+                            className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition mb-2">
                             <FileText size={14} className="shrink-0 text-sky-300" />
                             <span className="text-xs truncate max-w-[160px]">{m.media_filename || m.body || "Documento"}</span>
                             <Download size={12} className="shrink-0 text-white/40 ml-auto" />
                           </a>
                         ) : m.media_type === "sticker" && m.media_url ? (
-                          <img src={m.media_url} alt="sticker" className="w-20 h-20 object-contain mb-1" />
+                          <img src={m.media_url} alt="sticker" className="w-20 h-20 object-contain mb-2" />
                         ) : null}
                         {m.body && !["image","video","sticker"].includes(m.media_type) && (
                           <p className="whitespace-pre-wrap break-words">{m.body}</p>
                         )}
                         {m.body && m.media_type === "image" && m.body !== "[image]" && (
-                          <p className="whitespace-pre-wrap break-words text-white/70 italic text-[11px] mt-0.5">{m.body}</p>
+                          <p className="whitespace-pre-wrap break-words text-white/70 italic text-[12px] mt-1">{m.body}</p>
                         )}
-                        <p className={`text-[9px] mt-0.5 ${timeClr}`}>{timeStr}</p>
+                        <p className={`text-[10px] mt-1 ${timeClr}`}>{timeStr}</p>
                       </div>
                       {/* Botão encaminhar — lado direito para mensagens recebidas */}
                       {!isOut && m.body && (

@@ -451,9 +451,12 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Logo */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/40">
-              <span className="text-white font-black text-sm">P</span>
-            </div>
+            <img
+              src="/favicon.jpg"
+              alt="ProNutro"
+              className="h-10 w-10 rounded-xl object-cover shadow-lg"
+              style={{ boxShadow: "0 0 16px 2px rgba(180,120,80,0.35)" }}
+            />
             <div>
               <p className="text-white font-black text-lg leading-none tracking-tight">ProNutro</p>
               <p className="text-blue-200/50 text-[10px] font-bold tracking-wide">CRM CLÍNICA</p>
