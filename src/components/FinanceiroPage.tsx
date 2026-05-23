@@ -652,12 +652,14 @@ function fmtFileSize(bytes: number) {
 
 // ── PatientHistoryModal ───────────────────────────────────────────────────────
 
-function PatientHistoryModal({ nomePaciente, todasTransacoes, medicos, currentUser, onClose }: {
+function PatientHistoryModal({ nomePaciente, todasTransacoes, medicos, currentUser, onClose, onEditTx, onDeleteTx }: {
   nomePaciente: string;
   todasTransacoes: any[];
   medicos: any[];
   currentUser: any;
   onClose: () => void;
+  onEditTx?: (tx: any) => void;
+  onDeleteTx?: (id: string) => Promise<void>;
 }) {
   const [nfs, setNfs]               = useState<any[]>([]);
   const [nfFile, setNfFile]         = useState<File | null>(null);
@@ -764,7 +766,7 @@ function PatientHistoryModal({ nomePaciente, todasTransacoes, medicos, currentUs
             ) : (
               <div className="space-y-1.5">
                 {txs.map(t => (
-                  <div key={t.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/5" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <div key={t.id} className="group flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/5 hover:border-white/10 transition" style={{ background: "rgba(255,255,255,0.03)" }}>
                     <div className="text-right shrink-0 w-12">
                       <p className="text-white/40 text-[10px]">{new Date(t.data_pagamento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</p>
                       <p className="text-white/20 text-[9px]">{new Date(t.data_pagamento).getFullYear()}</p>
@@ -779,6 +781,22 @@ function PatientHistoryModal({ nomePaciente, todasTransacoes, medicos, currentUs
                       </span>
                     )}
                     <p className="text-emerald-400 font-black text-xs shrink-0">{Number(t.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                    {(onEditTx || onDeleteTx) && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                        {onEditTx && (
+                          <button onClick={() => { onEditTx(t); onClose(); }}
+                            className="p-1 rounded-lg hover:bg-amber-500/20 text-white/20 hover:text-amber-400 transition" title="Editar">
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                        {onDeleteTx && (
+                          <button onClick={() => onDeleteTx(t.id)}
+                            className="p-1 rounded-lg hover:bg-rose-500/20 text-white/20 hover:text-rose-400 transition" title="Excluir">
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2075,6 +2093,8 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           medicos={medicos}
           currentUser={{ nome: "Secretária" }}
           onClose={() => setPaciente(null)}
+          onEditTx={tx => { handleEdit(tx); setPaciente(null); }}
+          onDeleteTx={handleDelete}
         />
       )}
 

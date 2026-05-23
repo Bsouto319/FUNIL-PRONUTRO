@@ -78,7 +78,7 @@ export async function fetchStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [todayRes, mariaRes, agendRes, totalRes] = await Promise.all([
     supabase.from("pn_leads").select("id", { count: "exact" }).gte("created_at", today.toISOString()),
-    supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "em_atendimento"),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("ai_mode", true).not("stage", "in", '("resolvido","perdido")'),
     supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "agendado"),
     supabase.from("pn_leads").select("id", { count: "exact" }),
   ]);

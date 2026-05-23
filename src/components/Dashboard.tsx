@@ -420,7 +420,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   const statCards = [
     { label: "Leads Hoje",  value: stats.hoje,      icon: Users,    gradient: "from-sky-500 to-blue-600",       glow: "shadow-sky-500/30"     },
-    { label: "Maria IA",    value: stats.maria,     icon: Bot,      gradient: "from-violet-500 to-purple-600",  glow: "shadow-violet-500/30"  },
+    { label: "Maria IA",    value: mariaActive ? stats.maria : 0, icon: Bot, gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/30" },
     { label: "Agendados",   value: stats.agendados, icon: Calendar, gradient: "from-emerald-500 to-teal-600",   glow: "shadow-emerald-500/30" },
     { label: "Total",       value: stats.total,     icon: BarChart3, gradient: "from-amber-500 to-orange-500", glow: "shadow-amber-500/30"   },
   ];
