@@ -387,24 +387,75 @@ function KPIExportModal({ txs, medicos, onClose }: {
   medicos: any[];
   onClose: () => void;
 }) {
-  const [despesaIds,  setDespesaIds]  = useState<Set<string>>(new Set());
+  const now = new Date();
+  const todayISO = now.toISOString().slice(0, 10);
+
+  const [despesaIds,   setDespesaIds]   = useState<Set<string>>(new Set());
   const [medicoFiltro, setMedicoFiltro] = useState("");
-  const [periodo,     setPeriodo]     = useState(() => {
-    if (!txs.length) return new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-    const dates = txs.map(t => t.data_pagamento).filter(Boolean).sort();
-    const from  = new Date(dates[0]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-    const to    = new Date(dates[dates.length - 1]).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
-    return from === to ? to : `${from} – ${to}`;
+  const [clinicaNome,  setClinicaNome]  = useState("ProNutro Clínica");
+
+  // Período por pickers
+  const [dataFrom, setDataFrom] = useState(() => {
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    return d.toISOString().slice(0, 10);
   });
-  const [clinicaNome, setClinicaNome] = useState("ProNutro Clínica");
+  const [dataTo, setDataTo] = useState(todayISO);
+  const [presetAtivo, setPresetAtivo] = useState("mes_atual");
+
+  const PRESETS = [
+    { key: "mes_atual",    label: "Este mês" },
+    { key: "mes_anterior", label: "Mês ant." },
+    { key: "trim",         label: "Trimestre" },
+    { key: "ano_atual",    label: "Ano" },
+    { key: "custom",       label: "Personalizado" },
+  ];
+
+  function applyPreset(key: string) {
+    setPresetAtivo(key);
+    const n = new Date();
+    if (key === "mes_atual") {
+      setDataFrom(new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10));
+      setDataTo(new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10));
+    } else if (key === "mes_anterior") {
+      setDataFrom(new Date(n.getFullYear(), n.getMonth() - 1, 1).toISOString().slice(0, 10));
+      setDataTo(new Date(n.getFullYear(), n.getMonth(), 0).toISOString().slice(0, 10));
+    } else if (key === "trim") {
+      setDataFrom(new Date(n.getFullYear(), n.getMonth() - 2, 1).toISOString().slice(0, 10));
+      setDataTo(new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10));
+    } else if (key === "ano_atual") {
+      setDataFrom(`${n.getFullYear()}-01-01`);
+      setDataTo(`${n.getFullYear()}-12-31`);
+    }
+    // "custom" → não mexe nas datas, só mostra os pickers
+  }
+
+  // Rótulo legível do período
+  const periodoLabel = (() => {
+    const f = new Date(dataFrom + "T12:00:00");
+    const t = new Date(dataTo   + "T12:00:00");
+    const fStr = f.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+    const tStr = t.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+    return fStr === tStr ? fStr : `${fStr} – ${tStr}`;
+  })();
 
   const medicoNome = medicoFiltro
     ? (medicos.find(m => m.id === medicoFiltro)?.nome || "")
     : "Todos os Médicos";
 
-  const displayTxs = medicoFiltro
-    ? txs.filter(t => t.medico_id === medicoFiltro || (t.medico_nome || "").toLowerCase().includes((medicos.find(m=>m.id===medicoFiltro)?.nome||"").split(" ")[1]?.toLowerCase()||""))
-    : txs;
+  // Filtra por médico E por período selecionado
+  const displayTxs = txs.filter(t => {
+    const date = t.data_venda || t.data_pagamento;
+    if (date) {
+      const d = date.slice(0, 10);
+      if (d < dataFrom || d > dataTo) return false;
+    }
+    if (medicoFiltro) {
+      const med = medicos.find(m => m.id === medicoFiltro);
+      const baseName = (med?.nome || "").split(" ")[1]?.toLowerCase() || "";
+      return t.medico_id === medicoFiltro || (baseName && (t.medico_nome || "").toLowerCase().includes(baseName));
+    }
+    return true;
+  });
 
   const totalBruto    = displayTxs.filter(t => !despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
   const totalDespesas = displayTxs.filter(t =>  despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
@@ -418,7 +469,7 @@ function KPIExportModal({ txs, medicos, onClose }: {
   }
 
   function handleGenerate() {
-    const html = generateKPIHtml({ txs: displayTxs, despesaIds, medicoNome, periodo, clinicaNome });
+    const html = generateKPIHtml({ txs: displayTxs, despesaIds, medicoNome, periodo: periodoLabel, clinicaNome });
     const win  = window.open("", "_blank");
     if (!win) return;
     win.document.write(html);
@@ -439,7 +490,7 @@ function KPIExportModal({ txs, medicos, onClose }: {
             </div>
             <div>
               <p className="text-white font-black text-sm">Exportar KPI</p>
-              <p className="text-white/40 text-[10px]">{displayTxs.length} lançamentos selecionados</p>
+              <p className="text-violet-300/70 text-[10px] font-semibold">{periodoLabel}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition">
@@ -449,8 +500,52 @@ function KPIExportModal({ txs, medicos, onClose }: {
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
 
-          {/* Configurações do relatório */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* ── Período ── */}
+          <div className="rounded-xl border border-white/8 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)" }}>
+            <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block">Período do Relatório</label>
+
+            {/* Presets */}
+            <div className="flex gap-1.5 flex-wrap">
+              {PRESETS.map(p => (
+                <button key={p.key} onClick={() => applyPreset(p.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                    presetAtivo === p.key
+                      ? "bg-violet-600 border-violet-500 text-white"
+                      : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Date pickers — sempre visíveis */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <label className="text-white/30 text-[9px] font-bold uppercase tracking-wide block mb-1">De</label>
+                <input type="date" value={dataFrom}
+                  onChange={e => { setDataFrom(e.target.value); setPresetAtivo("custom"); }}
+                  style={{ colorScheme: "dark" }}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+              </div>
+              <span className="text-white/25 text-sm mt-4">→</span>
+              <div className="flex-1">
+                <label className="text-white/30 text-[9px] font-bold uppercase tracking-wide block mb-1">Até</label>
+                <input type="date" value={dataTo}
+                  onChange={e => { setDataTo(e.target.value); setPresetAtivo("custom"); }}
+                  style={{ colorScheme: "dark" }}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+              </div>
+              <div className="mt-4 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[10px] font-bold whitespace-nowrap">
+                {displayTxs.length} reg.
+              </div>
+            </div>
+
+            {/* Rótulo resultante */}
+            <p className="text-white/30 text-[10px]">Título no relatório: <span className="text-violet-300 font-bold">{periodoLabel}</span></p>
+          </div>
+
+          {/* Médico + Clínica */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Médico no Relatório</label>
               <select value={medicoFiltro} onChange={e => setMedicoFiltro(e.target.value)}
@@ -459,11 +554,6 @@ function KPIExportModal({ txs, medicos, onClose }: {
                 <option value="">Todos os Médicos</option>
                 {medicos.map(m => <option key={m.id} value={m.id}>{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Período (título)</label>
-              <input value={periodo} onChange={e => setPeriodo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
             </div>
             <div>
               <label className="text-white/40 text-[10px] font-bold uppercase tracking-wide block mb-1">Nome da Clínica</label>
