@@ -659,6 +659,19 @@ export async function bulkInsertFinanceiro(rows: object[]) {
   return !error;
 }
 
+export async function bulkDeleteFinanceiro(ids: string[]) {
+  if (!ids.length) return true;
+  const { error } = await supabase.from("pn_financeiro").delete().in("id", ids);
+  if (error) console.error("bulkDeleteFinanceiro", error.message);
+  return !error;
+}
+
+export async function markPagoFinanceiro(id: string, pago: boolean) {
+  const { error } = await supabase.from("pn_financeiro").update({ pago }).eq("id", id);
+  if (error) console.error("markPagoFinanceiro", error.message);
+  return !error;
+}
+
 // ── Notas Fiscais ─────────────────────────────────────────────────────────────
 
 export async function fetchNotasFiscais(params: { leadId?: string; nomePaciente?: string }) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DollarSign, CreditCard, TrendingUp, Receipt, Plus, Search, Download, Trash2, X, Upload, FileSpreadsheet, CheckCircle, AlertCircle, FileText, ChevronRight, AlertTriangle, Printer, Send, Pencil, BarChart2, CheckSquare, Square, Tag } from "lucide-react";
-import { fetchFinanceiro, fetchMedicos, insertFinanceiro, updateFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
+import { fetchFinanceiro, fetchMedicos, insertFinanceiro, updateFinanceiro, deleteFinanceiro, bulkInsertFinanceiro, bulkDeleteFinanceiro, markPagoFinanceiro, fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal, fetchAgendamentosPendentes, sendDirectWhatsApp } from "../lib/api";
 
 function fmt(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -1129,6 +1129,8 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   // KPI Export selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showKpiExport, setShowKpiExport] = useState(false);
+  const [togglingPagoId, setTogglingPagoId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // Import
   const fileRef                                   = useRef<HTMLInputElement>(null);
@@ -1357,6 +1359,35 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
     setDeletingId(id);
     await deleteFinanceiro(id);
     setDeletingId(null);
+    load();
+  }
+
+  async function handleTogglePago(t: any) {
+    setTogglingPagoId(t.id);
+    await markPagoFinanceiro(t.id, !t.pago);
+    setTogglingPagoId(null);
+    load();
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Excluir ${ids.length} lançamento${ids.length !== 1 ? "s" : ""} selecionado${ids.length !== 1 ? "s" : ""}? Essa ação não pode ser desfeita.`)) return;
+    await bulkDeleteFinanceiro(ids);
+    setSelectedIds(new Set());
+    load();
+  }
+
+  async function handleClearAll() {
+    const total = filtered.length;
+    if (!total) return;
+    const confirmMsg = `Apagar TODOS os ${total} lançamentos do período atual?\n\nEssa ação é permanente e não pode ser desfeita.\n\nDigite "APAGAR" para confirmar.`;
+    const input = window.prompt(confirmMsg);
+    if (input?.trim().toUpperCase() !== "APAGAR") return;
+    setClearingAll(true);
+    await bulkDeleteFinanceiro(filtered.map(t => t.id));
+    setClearingAll(false);
+    setSelectedIds(new Set());
     load();
   }
 
@@ -1668,6 +1699,11 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            <button onClick={handleClearAll} disabled={filtered.length === 0 || clearingAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/15 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-black transition disabled:opacity-30"
+              title="Apagar todos os lançamentos do período atual">
+              <Trash2 size={12} /> {clearingAll ? "Apagando..." : "Limpar tudo"}
+            </button>
             <button onClick={exportCSV} disabled={filtered.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition disabled:opacity-30">
               <Download size={12} /> CSV
@@ -1901,6 +1937,11 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         <div className="flex items-center gap-1">
+                          <button onClick={() => handleTogglePago(t)} disabled={togglingPagoId === t.id}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black transition border disabled:opacity-40 ${t.pago ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30" : "bg-white/5 border-white/10 text-white/30 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:text-emerald-400"}`}
+                            title={t.pago ? "Marcar como não pago" : "Marcar como pago"}>
+                            <CheckCircle size={10} /> {t.pago ? "Pago" : "Pagar"}
+                          </button>
                           <button onClick={() => setReciboTx(t)}
                             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 text-[10px] font-black transition border border-sky-500/25"
                             title="Emitir Recibo">
@@ -2058,9 +2099,25 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
               .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
           </span>
           <div className="w-px h-5 bg-white/15" />
+          <button
+            onClick={async () => {
+              for (const id of Array.from(selectedIds)) {
+                const tx = filtered.find(t => t.id === id);
+                if (tx) await markPagoFinanceiro(id, true);
+              }
+              setSelectedIds(new Set());
+              load();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition">
+            <CheckCircle size={12} /> Marcar pago
+          </button>
           <button onClick={() => setShowKpiExport(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-black transition">
             <BarChart2 size={12} /> Gerar KPI
+          </button>
+          <button onClick={handleBulkDelete}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-black transition">
+            <Trash2 size={12} /> Excluir
           </button>
           <button onClick={() => setSelectedIds(new Set())}
             className="text-white/30 hover:text-white/70 transition">
