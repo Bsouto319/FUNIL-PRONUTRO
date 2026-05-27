@@ -442,9 +442,9 @@ function KPIExportModal({ txs, medicos, onClose }: {
     ? (medicos.find(m => m.id === medicoFiltro)?.nome || "")
     : "Todos os Médicos";
 
-  // Filtra por médico E por período selecionado
+  // Filtra por médico E por período selecionado — usa data_pagamento para o filtro de data
   const displayTxs = txs.filter(t => {
-    const date = t.data_venda || t.data_pagamento;
+    const date = t.data_pagamento || t.data_venda;
     if (date) {
       const d = date.slice(0, 10);
       if (d < dataFrom || d > dataTo) return false;
@@ -457,8 +457,13 @@ function KPIExportModal({ txs, medicos, onClose }: {
     return true;
   });
 
-  const totalBruto    = displayTxs.filter(t => !despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
+  const receitas      = displayTxs.filter(t => !despesaIds.has(t.id));
+  const totalBruto    = receitas.reduce((s, t) => s + Number(t.valor || 0), 0);
   const totalDespesas = displayTxs.filter(t =>  despesaIds.has(t.id)).reduce((s, t) => s + Number(t.valor || 0), 0);
+  const totalDeducoes = receitas.reduce((s, t) => {
+    const b = Number(t.valor || 0);
+    return s + b * (Number(t.taxa_cartao || 0) / 100) + Number(t.taxas_diversas || 0);
+  }, 0);
 
   function toggleDespesa(id: string) {
     setDespesaIds(prev => {
@@ -565,9 +570,9 @@ function KPIExportModal({ txs, medicos, onClose }: {
           {/* Preview KPIs */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Receita (selecionados)", value: totalBruto, color: "text-emerald-400" },
-              { label: "Despesas marcadas",      value: totalDespesas, color: "text-rose-400" },
-              { label: "Resultado Líquido",      value: totalBruto - totalDespesas, color: "text-sky-300" },
+              { label: "Receita Bruta",     value: totalBruto, color: "text-emerald-400" },
+              { label: "Deduções+Despesas", value: totalDeducoes + totalDespesas, color: "text-rose-400" },
+              { label: "Resultado Líquido", value: totalBruto - totalDeducoes - totalDespesas, color: "text-sky-300" },
             ].map(c => (
               <div key={c.label} className="rounded-xl border border-white/8 p-3 text-center" style={{ background: "rgba(255,255,255,0.03)" }}>
                 <p className={`font-black text-base ${c.color}`}>{c.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
