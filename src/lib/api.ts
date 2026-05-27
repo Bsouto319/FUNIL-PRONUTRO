@@ -7,6 +7,7 @@ export const STAGES = [
   { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: "#be185d", kanban: true  },
   { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: "#0d9488", kanban: true  },
   { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: "#ca8a04", kanban: true  },
+  { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: "#7c3aed", kanban: true  },
   { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669", kanban: false },
   { key: "resolvido",      label: "Histórico",      color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5", kanban: false },
 ];
