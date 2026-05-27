@@ -678,8 +678,15 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                 </button>
 
                 {!audioBlob && !selectedFile && !recording && (
-                  <input value={text} onChange={e => setText(e.target.value)} placeholder="Mensagem..."
-                    className={`flex-1 px-3 py-2 rounded-xl bg-white/5 border text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 transition ${sendError ? "border-red-500/50 focus:ring-red-500/30" : "border-white/10 focus:ring-emerald-500/50"}`} />
+                  <textarea
+                    value={text}
+                    onChange={e => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (text.trim() && !sending) handleSend(e as any); } }}
+                    placeholder="Mensagem... (Enter = enviar, Shift+Enter = nova linha)"
+                    rows={1}
+                    style={{ minHeight: '38px', maxHeight: '120px', resize: 'none', overflowY: 'auto' }}
+                    className={`flex-1 px-3 py-2 rounded-xl bg-white/5 border text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 transition ${sendError ? "border-red-500/50 focus:ring-red-500/30" : "border-white/10 focus:ring-emerald-500/50"}`}
+                  />
                 )}
                 {(audioBlob || selectedFile || recording) && <div className="flex-1" />}
 
