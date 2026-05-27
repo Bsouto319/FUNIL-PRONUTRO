@@ -701,14 +701,14 @@ export default function Dashboard({ user }: { user: any }) {
 
       {/* Stats */}
       {page === "kanban" && (
-        <div className="flex-shrink-0 px-4 sm:px-6 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="flex-shrink-0 px-4 sm:px-6 py-1.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
           {statCards.map(({ label, value, icon: Icon, gradient, glow }) => (
-            <div key={label} className="border border-white/10 rounded-xl p-3 flex items-center gap-3 hover:bg-white/[0.06] transition" style={{ background: "rgba(255,255,255,0.05)" }}>
-              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg ${glow} flex-shrink-0`}>
-                <Icon size={20} className="text-white" />
+            <div key={label} className="border border-white/10 rounded-lg p-2 flex items-center gap-2 hover:bg-white/[0.06] transition" style={{ background: "rgba(255,255,255,0.05)" }}>
+              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg ${glow} flex-shrink-0`}>
+                <Icon size={14} className="text-white" />
               </div>
               <div>
-                <p className="text-4xl font-black text-white leading-none">{loading ? "–" : value}</p>
+                <p className="text-xl font-black text-white leading-none">{loading ? "–" : value}</p>
                 <p className="text-blue-200/60 text-[10px] font-black tracking-widest uppercase mt-0.5">{label}</p>
               </div>
             </div>
@@ -721,7 +721,7 @@ export default function Dashboard({ user }: { user: any }) {
         <div className="flex-shrink-0 px-4 sm:px-6 pb-1">
           <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
             {/* Linha superior: resumo rápido */}
-            <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap border-b border-white/8">
+            <div className="px-3 py-1.5 flex items-center gap-3 flex-wrap border-b border-white/8">
               <div className="flex items-center gap-1.5 shrink-0">
                 <Brain size={12} className="text-violet-400" />
                 <span className="text-violet-300 text-[10px] font-black uppercase tracking-wider">Briefing IA</span>
@@ -757,7 +757,7 @@ export default function Dashboard({ user }: { user: any }) {
             </div>
             {/* Linha inferior: briefing GPT se existir */}
             {briefing && (
-              <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
+              <div className="px-3 py-1 flex items-center gap-3 flex-wrap">
                 {briefing.score_saude != null && (
                   <>
                     <span className={`text-[10px] font-black ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>

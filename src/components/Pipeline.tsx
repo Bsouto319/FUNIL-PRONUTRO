@@ -69,7 +69,7 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
             onDrop={e => handleDrop(e, key)}
           >
             {/* Column header */}
-            <div className="px-3 py-3 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: headerBg }}>
+            <div className="px-3 py-2 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: headerBg }}>
               <span className="text-sm font-black text-white tracking-wider uppercase leading-none drop-shadow-md">{label}</span>
               <span className="text-sm font-black bg-black/30 text-white px-2.5 py-0.5 rounded-full min-w-[26px] text-center">{stageLeads.length}</span>
             </div>
@@ -142,11 +142,11 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onClick={() => onSelect(lead)}
-        className="w-full text-left rounded-lg transition-all duration-150 p-3 cursor-pointer select-none border hover:brightness-110"
+        className="w-full text-left rounded-lg transition-all duration-150 p-2 cursor-pointer select-none border hover:brightness-110"
         style={{ background: cardBg, borderColor: borderClr, borderLeftWidth: 3, borderLeftColor: leftClr }}
       >
         {/* Name row */}
-        <div className="flex items-start justify-between gap-1 mb-1.5">
+        <div className="flex items-start justify-between gap-1 mb-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <div
               className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 text-white font-black text-[9px]"
@@ -178,7 +178,7 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
         </div>
 
         {/* Phone + prontuário */}
-        <div className="flex items-center gap-1.5 mb-1.5">
+        <div className="flex items-center gap-1.5 mb-1">
           <p className="text-[10px] text-white/35 font-mono">+{lead.phone}</p>
           {lead.numero_prontuario && (
             <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/40">
@@ -189,16 +189,16 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
 
         {/* GPT Summary */}
         {lead.summary ? (
-          <p className="text-[10px] leading-relaxed line-clamp-2 mb-2 italic" style={{ color: `${stageColor}cc` }}>
+          <p className="text-[10px] leading-relaxed line-clamp-1 mb-1 italic" style={{ color: `${stageColor}cc` }}>
             🤖 {lead.summary}
           </p>
         ) : lead.first_message ? (
-          <p className="text-[10px] text-white/35 line-clamp-2 mb-2">{lead.first_message}</p>
-        ) : <div className="mb-2" />}
+          <p className="text-[10px] text-white/35 line-clamp-1 mb-1">{lead.first_message}</p>
+        ) : <div className="mb-1" />}
 
         {/* Quem falou por último */}
         {lead.last_sender_nome && (
-          <div className="flex items-center gap-1 mb-1.5">
+          <div className="flex items-center gap-1 mb-1">
             <span
               className="text-[9px] font-black px-1.5 py-0.5 rounded-full border truncate max-w-[120px]"
               style={
