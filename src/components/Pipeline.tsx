@@ -64,7 +64,7 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
           <div
             key={key}
             className="flex-shrink-0 flex flex-col rounded-xl overflow-hidden"
-            style={{ width: "calc((100vw - 96px - 20px) / 4)", minWidth: 220 }}
+            style={{ width: "calc((100vw - 88px) / 5)", minWidth: 175 }}
             onDragOver={e => e.preventDefault()}
             onDrop={e => handleDrop(e, key)}
           >
