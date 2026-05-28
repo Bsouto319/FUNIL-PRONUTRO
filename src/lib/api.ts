@@ -974,40 +974,37 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export async function sendMediaWhatsApp(phone: string, file: File): Promise<boolean> {
-  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
-  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
+export async function sendMediaWhatsApp(phone: string, file: File, leadId?: string, senderNome?: string): Promise<boolean> {
   try {
-    const base64   = await blobToBase64(file);
-    const isImage  = file.type.startsWith("image/");
-    const isVideo  = file.type.startsWith("video/");
-    const endpoint = isImage ? "/send/image" : isVideo ? "/send/video" : "/send/document";
-    const body     = isImage
-      ? { number: phone, image: base64, caption: file.name }
-      : isVideo
-      ? { number: phone, video: base64, caption: file.name }
-      : { number: phone, document: base64, fileName: file.name };
-    const res = await fetch(`${baseUrl}${endpoint}`, {
+    const base64    = await blobToBase64(file);
+    const isImage   = file.type.startsWith("image/");
+    const isVideo   = file.type.startsWith("video/");
+    const mediaType = isImage ? "image" : isVideo ? "video" : "document";
+    const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-send-media", {
       method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim() },
+      body: JSON.stringify({ phone, lead_id: leadId, media_type: mediaType, base64, file_name: file.name, sender_nome: senderNome }),
     });
     return res.ok;
   } catch { return false; }
 }
 
-export async function sendPttWhatsApp(phone: string, blob: Blob): Promise<boolean> {
-  const baseUrl = import.meta.env.VITE_UAZAPI_URL as string;
-  const token   = import.meta.env.VITE_UAZAPI_TOKEN as string;
+export async function sendPttWhatsApp(phone: string, blob: Blob, leadId?: string, senderNome?: string): Promise<boolean> {
   try {
     const base64 = await blobToBase64(blob);
-    const res = await fetch(`${baseUrl}/send/ptt`, {
+    const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-send-media", {
       method: "POST",
-      headers: { "Content-Type": "application/json", token },
-      body: JSON.stringify({ number: phone, audio: base64 }),
+      headers: { "Content-Type": "application/json", "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim() },
+      body: JSON.stringify({ phone, lead_id: leadId, media_type: "ptt", base64, sender_nome: senderNome }),
     });
     return res.ok;
   } catch { return false; }
+}
+
+export async function deleteMessage(messageId: string): Promise<boolean> {
+  const { error } = await supabase.from("pn_mensagens").delete().eq("id", messageId);
+  if (error) console.error("deleteMessage", error.message);
+  return !error;
 }
 
 // ── Prontuários ───────────────────────────────────────────────────────────────

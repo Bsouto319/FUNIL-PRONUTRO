@@ -5,7 +5,7 @@ import {
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
   fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal,
   updateLeadProfile, updateLeadPendencia, sendMediaWhatsApp, sendPttWhatsApp,
-  fetchQuickReplies, createQuickReply, deleteQuickReply,
+  fetchQuickReplies, createQuickReply, deleteQuickReply, deleteMessage,
 } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
@@ -229,11 +229,11 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     if (!selectedFile && !audioBlob) return;
     setSendingMedia(true);
     if (audioBlob) {
-      await sendPttWhatsApp(lead.phone, audioBlob);
+      await sendPttWhatsApp(lead.phone, audioBlob, lead.id, currentUser.nome);
       setAudioBlob(null);
       setRecordSecs(0);
     } else if (selectedFile) {
-      await sendMediaWhatsApp(lead.phone, selectedFile);
+      await sendMediaWhatsApp(lead.phone, selectedFile, lead.id, currentUser.nome);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -595,6 +595,19 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                           title="Encaminhar / Citar"
                           className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/70 transition shrink-0 self-center">
                           <CornerUpLeft size={12} />
+                        </button>
+                      )}
+                      {/* Apagar mensagem enviada */}
+                      {isOut && (
+                        <button type="button"
+                          title="Apagar mensagem"
+                          onClick={async () => {
+                            if (!confirm("Apagar esta mensagem do histórico?")) return;
+                            await deleteMessage(m.id);
+                            setMessages(prev => prev.filter(msg => msg.id !== m.id));
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 text-rose-400/50 hover:text-rose-400 transition shrink-0 self-center">
+                          <Trash2 size={11} />
                         </button>
                       )}
                     </div>
