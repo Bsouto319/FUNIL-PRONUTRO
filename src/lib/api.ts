@@ -503,10 +503,9 @@ export async function setMariaGlobalMode(active: boolean): Promise<void> {
     value: active ? "true" : "false",
     updated_at: new Date().toISOString(),
   });
-  if (active) {
-    await supabase.from("pn_leads").update({ ai_mode: true, updated_at: new Date().toISOString() })
-      .not("stage", "in", '("agendado","resolvido","perdido")');
-  }
+  await supabase.from("pn_leads")
+    .update({ ai_mode: active, updated_at: new Date().toISOString() })
+    .not("stage", "in", '("agendado","resolvido","perdido")');
 }
 
 export async function updateLeadAiMode(id: string, aiMode: boolean) {
