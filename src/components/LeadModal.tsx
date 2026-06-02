@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search, UserCheck, ArrowRightLeft } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search, UserCheck, ArrowLeftRight } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
@@ -466,7 +466,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white/70"
               title="Transferir conversa"
             >
-              <ArrowRightLeft size={13} />
+              <ArrowLeftRight size={13} />
             </button>
             {showTransfer && (
               <div className="absolute right-0 top-8 z-50 bg-gray-900 border border-white/15 rounded-xl shadow-2xl py-2 min-w-[160px]">
