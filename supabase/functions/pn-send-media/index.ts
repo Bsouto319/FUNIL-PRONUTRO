@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const UAZAPI_URL   = "https://btechsoutoshop.uazapi.com";
-const UAZAPI_TOKEN = "5efd90a1-116b-4c86-b715-7bac2fab658a";
+const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://free.uazapi.com";
+const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "d50a4fec-a46e-401c-9c65-580c8b8619b8";
 const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
