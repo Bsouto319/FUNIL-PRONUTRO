@@ -21,31 +21,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        fetchCurrentUser().then(u => {
-          // Se o perfil não carregou mas a sessão é válida, usa dados da sessão como fallback
-          setUser(u || { id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
-          setLoading(false);
-        }).catch(() => {
-          setUser({ id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
-          setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        fetchCurrentUser().then(u => {
-          setUser(u || { id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
-        }).catch(() => {
-          setUser({ id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
-        });
+        try {
+          const u = await fetchCurrentUser();
+          setUser(u || {
+            id:    session.user.id,
+            email: session.user.email,
+            nome:  session.user.email?.split("@")[0] || "Usuário",
+            role:  "staff",
+            ativo: true,
+          });
+        } catch {
+          setUser({
+            id:    session.user.id,
+            email: session.user.email,
+            nome:  session.user.email?.split("@")[0] || "Usuário",
+            role:  "staff",
+            ativo: true,
+          });
+        }
       } else {
         setUser(null);
       }
+      setLoading(false);
     });
     return () => subscription.unsubscribe();
   }, []);
