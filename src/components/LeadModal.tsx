@@ -228,8 +228,30 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   async function handleSendMedia() {
     if (!selectedFile && !audioBlob) return;
     setSendingMedia(true);
-    if (audioBlob) {
-      await sendPttWhatsApp(lead.phone, audioBlob, lead.id, currentUser.nome);
+
+    const isAudio  = !!audioBlob;
+    const fileName = selectedFile?.name || "audio.ogg";
+    const mediaType = isAudio ? "ptt"
+      : selectedFile?.type.startsWith("image/") ? "image"
+      : selectedFile?.type.startsWith("video/") ? "video"
+      : "document";
+
+    // Optimistic update — mostra no chat imediatamente
+    const optimisticMsg = {
+      id: `local-${Date.now()}`,
+      lead_id: lead.id,
+      direction: "out",
+      body: fileName,
+      media_type: isAudio ? "audio" : mediaType,
+      media_filename: fileName,
+      sender_nome: currentUser.nome,
+      sender_tipo: "human",
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev: any[]) => [...prev, optimisticMsg]);
+
+    if (isAudio) {
+      await sendPttWhatsApp(lead.phone, audioBlob!, lead.id, currentUser.nome);
       setAudioBlob(null);
       setRecordSecs(0);
     } else if (selectedFile) {
@@ -237,8 +259,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+
     setSendingMedia(false);
-    setTimeout(() => fetchMessages(lead.id).then(setMessages), 2000);
+    setTimeout(() => fetchMessages(lead.id).then(setMessages), 3000);
   }
 
   async function handleNotesBlur() {
