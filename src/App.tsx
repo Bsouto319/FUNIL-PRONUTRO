@@ -21,32 +21,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Safety timeout: se onAuthStateChange não disparar em 6s, libera a tela
+    const safety = setTimeout(() => setLoading(false), 6000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(safety);
       if (session) {
+        // Timeout de 5s para o fetchCurrentUser não travar indefinidamente
+        const fallback = {
+          id:    session.user.id,
+          email: session.user.email,
+          nome:  session.user.email?.split("@")[0] || "Usuário",
+          role:  "staff",
+          ativo: true,
+        };
         try {
-          const u = await fetchCurrentUser();
-          setUser(u || {
-            id:    session.user.id,
-            email: session.user.email,
-            nome:  session.user.email?.split("@")[0] || "Usuário",
-            role:  "staff",
-            ativo: true,
-          });
+          const userPromise = fetchCurrentUser();
+          const timeoutPromise = new Promise<null>(res => setTimeout(() => res(null), 5000));
+          const u = await Promise.race([userPromise, timeoutPromise]);
+          setUser(u || fallback);
         } catch {
-          setUser({
-            id:    session.user.id,
-            email: session.user.email,
-            nome:  session.user.email?.split("@")[0] || "Usuário",
-            role:  "staff",
-            ativo: true,
-          });
+          setUser(fallback);
         }
       } else {
         setUser(null);
       }
       setLoading(false);
     });
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(safety); subscription.unsubscribe(); };
   }, []);
 
   if (loading) {

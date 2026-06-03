@@ -172,12 +172,6 @@ export async function updateLeadProfile(id: string, data: {
   return !error;
 }
 
-export async function assignLead(leadId: string, userId: string | null): Promise<boolean> {
-  const { error } = await supabase.from("pn_leads").update({ assignee_id: userId }).eq("id", leadId);
-  if (error) console.error("assignLead", error.message);
-  return !error;
-}
-
 export async function deleteLead(id: string) {
   const { error } = await supabase.from("pn_leads").delete().eq("id", id);
   if (error) console.error("deleteLead", error.message);

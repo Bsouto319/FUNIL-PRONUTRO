@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell, CalendarDays, Volume2, VolumeX } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell, CalendarDays, Volume2, VolumeX, ChevronDown } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
@@ -75,7 +75,8 @@ export default function Dashboard({ user }: { user: any }) {
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
-  const [showAllLeads, setShowAllLeads] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   function playNewLeadSound() {
     if (mutedRef.current) return;
@@ -436,13 +437,9 @@ export default function Dashboard({ user }: { user: any }) {
     br.setUTCHours(0, 0, 0, 0);
     return new Date(br.getTime() + 3 * 3600000);
   })();
-  const assignedLeads = showAllLeads
-    ? leads
-    : leads.filter(l => !l.assignee_id || l.assignee_id === user?.id);
-
   const filteredLeads = filterHoje
-    ? assignedLeads.filter(l => new Date(l.created_at) >= brasiliaToday)
-    : assignedLeads;
+    ? leads.filter(l => new Date(l.created_at) >= brasiliaToday)
+    : leads;
 
   const firstName = (user.nome || "").split(" ")[0];
   const brHour    = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
@@ -483,22 +480,19 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Nav tabs */}
           <div className="flex items-center gap-1 ml-2">
-            {(["kanban", "agenda", "pacientes", "pendencias", "financeiro", "relatorio", "prontuario", "estoque", "admin"] as Page[]).map(p => {
+            {/* Tabs principais sempre visíveis */}
+            {(["kanban", "agenda", "pacientes"] as Page[]).map(p => {
               const isKanban = p === "kanban";
-              const isPendencias = p === "pendencias";
-              const pendenciasCount = leads.filter(l => l.pendencia_financeira).length;
               const hasAlert = isKanban && (newLeadAlert || newMsgAlert);
               return (
                 <button
                   key={p}
                   onClick={() => { setPage(p); if (isKanban) { setNewLeadAlert(false); setNewMsgAlert(false); } }}
                   className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    page === p
-                      ? isPendencias ? "bg-yellow-500/25 text-yellow-300" : "bg-white/15 text-white"
-                      : isPendencias && pendenciasCount > 0 ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-500/10" : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"
                   }`}
                 >
-                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : p === "pacientes" ? "👥 Pacientes" : p === "pendencias" ? "💰 Pendências" : p === "financeiro" ? "Financeiro" : p === "relatorio" ? "Relatório" : p === "prontuario" ? "Prontuário" : p === "estoque" ? "📦 Estoque" : "Admin"}
+                  {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : "👥 Pacientes"}
                   {hasAlert && (
                     <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
@@ -507,14 +501,61 @@ export default function Dashboard({ user }: { user: any }) {
                         style={{ backgroundColor: newLeadAlert ? "#22c55e" : "#f59e0b" }} />
                     </span>
                   )}
-                  {isPendencias && pendenciasCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-yellow-500 text-white text-[9px] font-black flex items-center justify-center px-1">
-                      {pendenciasCount}
-                    </span>
-                  )}
                 </button>
               );
             })}
+
+            {/* Dropdown "Mais" para o resto */}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                onClick={() => setShowMoreMenu(m => !m)}
+                className={`relative flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  ["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page)
+                    ? "bg-white/15 text-white"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                }`}
+              >
+                {["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page)
+                  ? (page === "pendencias" ? "💰 Pendências" : page === "financeiro" ? "Financeiro" : page === "relatorio" ? "Relatório" : page === "prontuario" ? "Prontuário" : page === "estoque" ? "📦 Estoque" : "Admin")
+                  : "Mais"}
+                <ChevronDown size={11} className={`transition-transform ${showMoreMenu ? "rotate-180" : ""}`} />
+                {/* Badge pendências */}
+                {leads.filter(l => l.pendencia_financeira).length > 0 && !["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page) && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-yellow-500 text-white text-[9px] font-black flex items-center justify-center px-1">
+                    {leads.filter(l => l.pendencia_financeira).length}
+                  </span>
+                )}
+              </button>
+
+              {showMoreMenu && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-gray-900/95 border border-white/15 rounded-xl shadow-2xl py-1.5 min-w-[160px]" style={{ backdropFilter: "blur(12px)" }}>
+                  {([
+                    { key: "pendencias", label: "💰 Pendências" },
+                    { key: "financeiro", label: "Financeiro" },
+                    { key: "relatorio",  label: "Relatório" },
+                    { key: "prontuario", label: "Prontuário" },
+                    { key: "estoque",    label: "📦 Estoque" },
+                    { key: "admin",      label: "⚙️ Admin" },
+                  ] as { key: Page; label: string }[]).map(({ key, label }) => {
+                    const pendenciasCount = leads.filter(l => l.pendencia_financeira).length;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => { setPage(key); setShowMoreMenu(false); }}
+                        className={`w-full text-left flex items-center justify-between px-4 py-2 text-sm transition ${
+                          page === key ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        {label}
+                        {key === "pendencias" && pendenciasCount > 0 && (
+                          <span className="ml-2 min-w-[18px] h-4 rounded-full bg-yellow-500 text-white text-[9px] font-black flex items-center justify-center px-1">{pendenciasCount}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Search + Filtro Hoje */}
@@ -529,18 +570,6 @@ export default function Dashboard({ user }: { user: any }) {
                   className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
                 />
               </div>
-              <button
-                onClick={() => setShowAllLeads(a => !a)}
-                title={showAllLeads ? "Vendo todas — clique para ver só as suas" : "Ver só as suas conversas"}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
-                  showAllLeads
-                    ? "bg-amber-600 text-white border-amber-500/50 shadow-lg shadow-amber-500/20"
-                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
-                }`}
-              >
-                <Users size={11} />
-                <span className="hidden sm:inline">{showAllLeads ? "Todas" : "Minhas"}</span>
-              </button>
               <button
                 onClick={() => setFilterHoje(f => !f)}
                 title={filterHoje ? "Mostrando só leads de hoje — clique para ver todos" : "Filtrar por leads de hoje"}
