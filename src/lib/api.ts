@@ -57,18 +57,13 @@ const STAGE_MAP: Record<string, string> = {
   "inativo":        "resolvido",
 };
 
-// showAll=true → admin vê tudo; false → só as suas + não atribuídas
-export async function fetchLeads(search = "", userId?: string, showAll = false) {
-  const cacheKey = `leads_${search}_${userId}_${showAll}`;
+export async function fetchLeads(search = "") {
+  const cacheKey = `leads_${search}`;
   let q = supabase
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .order("created_at", { ascending: false });
   if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
-  // Filtro de atribuição: não atribuído OU atribuído a mim
-  if (!showAll && userId) {
-    q = q.or(`assignee_id.is.null,assignee_id.eq.${userId}`);
-  }
   const { data, error } = await q;
   if (error || !data) {
     console.warn("fetchLeads offline — usando cache");
@@ -79,17 +74,6 @@ export async function fetchLeads(search = "", userId?: string, showAll = false) 
   setCache(cacheKey, mapped);
   return mapped;
 }
-
-// Atribui uma conversa a um utilizador (ou null para desatribuir)
-export async function assignLead(leadId: string, userId: string | null) {
-  const { error } = await supabase
-    .from("pn_leads")
-    .update({ assignee_id: userId })
-    .eq("id", leadId);
-  if (error) console.error("assignLead", error.message);
-  return !error;
-}
-
 
 export async function fetchStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);

@@ -442,7 +442,8 @@ async function runPoll() {
         const { data: existLead } = await db.from("pn_leads").select("id").eq("phone", phone).maybeSingle();
         if (!existLead || !outboundMsgs.length) continue;
         for (const m of outboundMsgs) {
-          const body = m.text || m.content?.text || m.body || "";
+          // Strip "*SenderName:*\n" prefix added by pn-send-message before dedup
+          const body = (m.text || m.content?.text || m.body || "").replace(/^\*[^*:]+:\*\n/, "");
           const eid  = m.messageid || m.id;
           if (!body || !eid) continue;
           const humanName = m.senderName || m.pushName || "Equipe";
@@ -529,7 +530,8 @@ async function runPoll() {
       // Salva mensagens outbound da equipe (Monica etc.)
       // — evita salvar mensagens da Maria que ela já inseriu via safeSend
       for (const m of outboundMsgs) {
-        const body = m.text || m.content?.text || m.body || "";
+        // Strip "*SenderName:*\n" prefix added by pn-send-message before dedup
+        const body = (m.text || m.content?.text || m.body || "").replace(/^\*[^*:]+:\*\n/, "");
         const eid  = m.messageid || m.id;
         if (!body || !eid) continue;
         const humanName = m.senderName || m.pushName || "Equipe";

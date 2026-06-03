@@ -12,7 +12,7 @@ import PacientesPage from "./PacientesPage";
 import PacientePresencialModal from "./PacientePresencialModal";
 import EstoquePage from "./EstoquePage";
 import TeamChat from "./TeamChat";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage, assignLead } from "../lib/api";
+import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin";
@@ -75,10 +75,6 @@ export default function Dashboard({ user }: { user: any }) {
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
-  const [showAllLeads, setShowAllLeads] = useState(false);
-  const showAllRef = useRef(false);
-  showAllRef.current = showAllLeads;
-
   function playNewLeadSound() {
     if (mutedRef.current) return;
     try {
@@ -120,7 +116,7 @@ export default function Dashboard({ user }: { user: any }) {
   const load = useCallback(async (q?: string) => {
     try {
       const query = q !== undefined ? q : searchRef.current;
-      const [l, s] = await Promise.all([fetchLeads(query, user?.id, showAllRef.current), fetchStats()]);
+      const [l, s] = await Promise.all([fetchLeads(query), fetchStats()]);
       const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
       setLeads(unique);
       setStats(s);
@@ -527,18 +523,6 @@ export default function Dashboard({ user }: { user: any }) {
                   className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
                 />
               </div>
-              <button
-                onClick={() => { setShowAllLeads(a => !a); setTimeout(() => load(), 50); }}
-                title={showAllLeads ? "Vendo todas — clique para ver só as suas" : "Ver só as suas conversas"}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
-                  showAllLeads
-                    ? "bg-amber-600 text-white border-amber-500/50 shadow-lg shadow-amber-500/20"
-                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
-                }`}
-              >
-                <Users size={11} />
-                <span className="hidden sm:inline">{showAllLeads ? "Todas" : "Minhas"}</span>
-              </button>
               <button
                 onClick={() => setFilterHoje(f => !f)}
                 title={filterHoje ? "Mostrando só leads de hoje — clique para ver todos" : "Filtrar por leads de hoje"}

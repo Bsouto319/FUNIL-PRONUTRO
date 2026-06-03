@@ -1,12 +1,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search, UserCheck, ArrowLeftRight } from "lucide-react";
+import { X, Send, Trash2, Calendar, ChevronDown, FileText, Upload, Download, AlertCircle, Copy, CheckCheck, UserCircle, Save, Paperclip, Mic, Square, Zap, CornerUpLeft, Plus, Search } from "lucide-react";
 import {
   fetchMessages, sendMessage, updateLeadStage, updateLeadNotes, deleteLead,
   fetchMedicos, fetchSlotsDisponiveis, createAgendamento, STAGES,
   fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal,
   updateLeadProfile, updateLeadPendencia, sendMediaWhatsApp, sendPttWhatsApp,
   fetchQuickReplies, createQuickReply, deleteQuickReply, deleteMessage,
-  assignLead, fetchUsuarios,
 } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
@@ -65,9 +64,6 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [savingQR, setSavingQR]           = useState(false);
   const [forwardText, setForwardText]     = useState<string | null>(null);
   const [copied, setCopied]               = useState(false);
-  const [showTransfer, setShowTransfer]   = useState(false);
-  const [usuarios, setUsuarios]           = useState<any[]>([]);
-  const [transferring, setTransferring]   = useState(false);
 
   // Perfil / pagamento
   const [perfNome,      setPerfNome]      = useState(lead.name || "");
@@ -153,28 +149,11 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-assign: atribui a conversa ao utilizador actual se ainda não tiver responsável
-  async function autoAssign() {
-    if (!lead.assignee_id && currentUser?.id) {
-      await assignLead(lead.id, currentUser.id);
-      lead.assignee_id = currentUser.id; // actualiza local sem reload
-    }
-  }
-
-  async function handleTransfer(userId: string | null) {
-    setTransferring(true);
-    await assignLead(lead.id, userId);
-    setTransferring(false);
-    setShowTransfer(false);
-    onUpdated();
-  }
-
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim() || sending) return;
     setSending(true);
     setSendError(false);
-    await autoAssign();
     const ok = await sendMessage(lead.id, lead.phone, text.trim(), currentUser.nome);
     if (ok) {
       setText("");
@@ -270,7 +249,6 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
       created_at: new Date().toISOString(),
     };
     setMessages((prev: any[]) => [...prev, optimisticMsg]);
-    await autoAssign();
 
     if (isAudio) {
       await sendPttWhatsApp(lead.phone, audioBlob!, lead.id, currentUser.nome);
@@ -448,50 +426,6 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               )}
             </div>
             <p className="text-white/40 text-xs font-mono">{lead.phone}</p>
-          </div>
-          {/* Responsável + Transferir */}
-          <div className="relative flex items-center gap-1">
-            {lead.responsavel ? (
-              <span className="text-[10px] px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-300 font-bold flex items-center gap-1">
-                <UserCheck size={10} />
-                {lead.responsavel.nome}
-              </span>
-            ) : (
-              <span className="text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/30 font-bold">
-                Sem responsável
-              </span>
-            )}
-            <button
-              onClick={() => { fetchUsuarios().then(setUsuarios); setShowTransfer(t => !t); }}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white/70"
-              title="Transferir conversa"
-            >
-              <ArrowLeftRight size={13} />
-            </button>
-            {showTransfer && (
-              <div className="absolute right-0 top-8 z-50 bg-gray-900 border border-white/15 rounded-xl shadow-2xl py-2 min-w-[160px]">
-                <p className="text-[10px] font-black text-white/30 px-3 pb-1 uppercase tracking-wider">Transferir para</p>
-                {usuarios.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleTransfer(u.id)}
-                    disabled={transferring}
-                    className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 transition flex items-center gap-2"
-                  >
-                    <UserCheck size={12} className="text-emerald-400 shrink-0" />
-                    {u.nome}
-                    {lead.assignee_id === u.id && <span className="ml-auto text-[9px] text-emerald-400 font-bold">atual</span>}
-                  </button>
-                ))}
-                <button
-                  onClick={() => handleTransfer(null)}
-                  disabled={transferring}
-                  className="w-full text-left px-3 py-2 text-sm text-white/40 hover:bg-white/10 transition border-t border-white/10 mt-1 pt-2"
-                >
-                  Remover responsável
-                </button>
-              </div>
-            )}
           </div>
           <div className="relative">
             <select value={stage} onChange={e => handleStageChange(e.target.value)}
