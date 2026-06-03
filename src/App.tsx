@@ -21,32 +21,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Segurança: força loading=false após 5s para nunca ficar preso
+    const safetyTimer = setTimeout(() => setLoading(false), 5000);
+
+    // Resolve sessão inicial rapidamente
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchCurrentUser().then(u => {
+          setUser(u || { id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
+        }).catch(() => {
+          setUser({ id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
+        }).finally(() => { clearTimeout(safetyTimer); setLoading(false); });
+      } else {
+        clearTimeout(safetyTimer);
+        setLoading(false);
+      }
+    });
+
+    // Escuta mudanças futuras (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         try {
           const u = await fetchCurrentUser();
-          setUser(u || {
-            id:    session.user.id,
-            email: session.user.email,
-            nome:  session.user.email?.split("@")[0] || "Usuário",
-            role:  "staff",
-            ativo: true,
-          });
+          setUser(u || { id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
         } catch {
-          setUser({
-            id:    session.user.id,
-            email: session.user.email,
-            nome:  session.user.email?.split("@")[0] || "Usuário",
-            role:  "staff",
-            ativo: true,
-          });
+          setUser({ id: session.user.id, email: session.user.email, nome: session.user.email?.split("@")[0] || "Usuário", role: "staff", ativo: true });
         }
       } else {
         setUser(null);
       }
-      setLoading(false);
     });
-    return () => subscription.unsubscribe();
+
+    return () => { subscription.unsubscribe(); clearTimeout(safetyTimer); };
   }, []);
 
   if (loading) {
