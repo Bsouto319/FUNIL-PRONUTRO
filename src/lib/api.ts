@@ -90,15 +90,6 @@ export async function assignLead(leadId: string, userId: string | null) {
   return !error;
 }
 
-// Lista utilizadores activos para o selector de transferência
-export async function fetchUsuarios() {
-  const { data } = await supabase
-    .from("pn_usuarios")
-    .select("id, nome, role")
-    .eq("ativo", true)
-    .order("nome");
-  return data || [];
-}
 
 export async function fetchStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
