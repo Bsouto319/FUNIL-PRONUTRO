@@ -75,6 +75,8 @@ export default function Dashboard({ user }: { user: any }) {
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
+  const [showAllLeads, setShowAllLeads] = useState(false);
+
   function playNewLeadSound() {
     if (mutedRef.current) return;
     try {
@@ -434,9 +436,13 @@ export default function Dashboard({ user }: { user: any }) {
     br.setUTCHours(0, 0, 0, 0);
     return new Date(br.getTime() + 3 * 3600000);
   })();
+  const assignedLeads = showAllLeads
+    ? leads
+    : leads.filter(l => !l.assignee_id || l.assignee_id === user?.id);
+
   const filteredLeads = filterHoje
-    ? leads.filter(l => new Date(l.created_at) >= brasiliaToday)
-    : leads;
+    ? assignedLeads.filter(l => new Date(l.created_at) >= brasiliaToday)
+    : assignedLeads;
 
   const firstName = (user.nome || "").split(" ")[0];
   const brHour    = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
@@ -523,6 +529,18 @@ export default function Dashboard({ user }: { user: any }) {
                   className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
                 />
               </div>
+              <button
+                onClick={() => setShowAllLeads(a => !a)}
+                title={showAllLeads ? "Vendo todas — clique para ver só as suas" : "Ver só as suas conversas"}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
+                  showAllLeads
+                    ? "bg-amber-600 text-white border-amber-500/50 shadow-lg shadow-amber-500/20"
+                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
+                }`}
+              >
+                <Users size={11} />
+                <span className="hidden sm:inline">{showAllLeads ? "Todas" : "Minhas"}</span>
+              </button>
               <button
                 onClick={() => setFilterHoje(f => !f)}
                 title={filterHoje ? "Mostrando só leads de hoje — clique para ver todos" : "Filtrar por leads de hoje"}
