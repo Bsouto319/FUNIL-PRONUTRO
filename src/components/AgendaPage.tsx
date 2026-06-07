@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { fetchAgendamentos, fetchMedicos, fetchBancos, cancelAgendamento, updateAgendamento, insertFinanceiro, fetchLeads, createAgendamento, checkSmartCancel, fetchListaEsperaForDate, type SmartCancelCandidate } from "../lib/api";
 import { supabase } from "../lib/supabase";
-import { ChevronLeft, ChevronRight, X, Clock, CheckCircle2, XCircle, RefreshCw, Zap, DollarSign, ExternalLink, Stethoscope, AlertCircle, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Clock, CheckCircle2, XCircle, RefreshCw, Zap, DollarSign, ExternalLink, Stethoscope, AlertCircle, Plus, CalendarDays } from "lucide-react";
 
 const FALLBACK_COLORS = ["#7c3aed","#0284c7","#059669","#d97706","#dc2626","#0891b2","#db2777","#0d9488"];
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -83,6 +83,14 @@ export default function AgendaPage({
   const [listaEsperaAlert, setListaEsperaAlert] = useState<{
     appt: any;
     leads: any[];
+  } | null>(null);
+
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [rescheduleDateTime, setRescheduleDateTime] = useState("");
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
+
+  const [contextMenu, setContextMenu] = useState<{
+    appt: any; top: number; left: number;
   } | null>(null);
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -285,6 +293,16 @@ export default function AgendaPage({
     load();
   }
 
+  async function handleReschedule(apptId: string) {
+    if (!rescheduleDateTime) return;
+    setRescheduleSaving(true);
+    await updateAgendamento(apptId, { data_hora: rescheduleDateTime + ":00" });
+    setRescheduleId(null);
+    setRescheduleDateTime("");
+    setRescheduleSaving(false);
+    load();
+  }
+
   function openNewAppt(medicoId: string, medicoNome: string, slot: number) {
     const slotLabel = slotToLabel(slot);
     const dataHora  = `${selectedDay}T${slotLabel}:00`;
@@ -467,9 +485,15 @@ export default function AgendaPage({
                         return (
                           <div key={a.id}
                             className="absolute left-1 right-1 rounded-lg overflow-hidden cursor-pointer transition-all select-none z-10"
-                            style={{ top: topPx, height: isExp ? "auto" : heightPx, minHeight: heightPx,
+                            style={{ top: topPx, height: heightPx, minHeight: heightPx,
                               background: bgColor, border: `1.5px solid ${borderColor}`, opacity: isCancelled ? 0.5 : 1 }}
-                            onClick={() => !isCancelled && setExpandedId(isExp ? null : a.id)}>
+                            onClick={e => {
+                              if (isCancelled) { openNewAppt(m.id, m.nome, slot); return; }
+                              if (isExp) { setExpandedId(null); setContextMenu(null); return; }
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setContextMenu({ appt: a, top: e.clientY, left: rect.right + 6 });
+                              setExpandedId(null);
+                            }}>
 
                             <div className="px-2 py-1.5">
                               <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -484,142 +508,6 @@ export default function AgendaPage({
                               )}
                             </div>
 
-                            {/* Expanded panel */}
-                            {isExp && (
-                              <div className="border-t px-3 py-3 space-y-3" style={{ borderColor: `${color}30` }}>
-                                {/* Full name + phone */}
-                                <div>
-                                  <p className="text-white font-black text-sm">{a.lead?.name||a.lead?.whatsapp_name||"Paciente"}</p>
-                                  {a.lead?.phone && <p className="text-white/30 text-[10px] font-mono">+{a.lead.phone}</p>}
-                                  {a.medico?.especialidade && <p className="text-[10px] mt-0.5" style={{ color }}>{a.medico.especialidade}</p>}
-                                  {a.indicacao && <p className="text-white/45 text-[10px] mt-0.5">📣 Indicação: {a.indicacao}</p>}
-                                  {a.tipo_procedimento && <p className="text-white/45 text-[10px]">🔬 {a.tipo_procedimento}{a.valor_procedimento ? ` — ${formatBRL(a.valor_procedimento)}` : ""}</p>}
-                                </div>
-
-                                {/* Tipo */}
-                                <div>
-                                  <p className="text-white/30 text-[9px] font-black uppercase mb-1.5">Tipo</p>
-                                  <div className="flex gap-1.5">
-                                    {TIPOS.map(t => (
-                                      <button key={t.key}
-                                        onClick={e => { e.stopPropagation(); updateAgendamento(a.id,{tipo_consulta:t.key}); setEditTipo(p=>({...p,[a.id]:t.key})); }}
-                                        className="flex-1 py-1.5 rounded-lg text-[9px] font-black transition"
-                                        style={{ background: tipoAtual===t.key?hex(t.color,0.25):"rgba(255,255,255,0.05)",
-                                          color: tipoAtual===t.key?t.color:"rgba(255,255,255,0.35)",
-                                          border: `1.5px solid ${tipoAtual===t.key?t.color+"80":"rgba(255,255,255,0.08)"}` }}>
-                                        {t.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-
-                                {/* Payment */}
-                                {!isRealizado && (
-                                  <div onClick={e => e.stopPropagation()}>
-                                    <p className="text-white/30 text-[9px] font-black uppercase mb-1.5">Pagamento</p>
-
-                                    {/* Valor + Forma */}
-                                    <div className="flex gap-1.5 mb-1.5">
-                                      <div className="relative flex-1">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs font-bold">R$</span>
-                                        <input value={editValor[a.id]||""} onChange={e=>setEditValor(p=>({...p,[a.id]:e.target.value}))}
-                                          placeholder="0,00" onClick={e=>e.stopPropagation()}
-                                          className="w-full pl-7 pr-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none" />
-                                      </div>
-                                      <select value={editForma[a.id]||"PIX"} onChange={e=>{setEditForma(p=>({...p,[a.id]:e.target.value}));setEditParcelas(p=>({...p,[a.id]:"1"}));}} onClick={e=>e.stopPropagation()}
-                                        className="px-1.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
-                                        {FORMAS.map(f=><option key={f} value={f}>{f}</option>)}
-                                      </select>
-                                    </div>
-
-                                    {/* Parcelas — só aparece no Cartão Crédito */}
-                                    {(editForma[a.id]||"PIX") === "Cartão Crédito" && (() => {
-                                      const valorNum = parseFloat((editValor[a.id]||"0").replace(",",".")) || 0;
-                                      const parc     = parseInt(editParcelas[a.id]) || 1;
-                                      const mensal   = parc > 0 && valorNum > 0 ? valorNum / parc : 0;
-                                      return (
-                                        <div className="mb-1.5 rounded-lg p-2 border border-violet-500/25" style={{ background:"rgba(139,92,246,0.08)" }}>
-                                          <div className="flex items-center justify-between mb-1.5">
-                                            <span className="text-violet-300 text-[9px] font-black uppercase">Parcelamento</span>
-                                            {mensal > 0 && parc > 1 && (
-                                              <span className="text-violet-200 text-[10px] font-black">
-                                                {parc}x de {mensal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="flex gap-1.5 flex-wrap">
-                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
-                                              const val = valorNum > 0 ? valorNum / n : 0;
-                                              const isActive = parc === n;
-                                              return (
-                                                <button key={n} type="button"
-                                                  onClick={e=>{e.stopPropagation();setEditParcelas(p=>({...p,[a.id]:String(n)}));}}
-                                                  className="px-2 py-1 rounded-md text-[9px] font-black transition"
-                                                  style={{
-                                                    background: isActive?"rgba(139,92,246,0.35)":"rgba(255,255,255,0.05)",
-                                                    color:      isActive?"#c4b5fd":"rgba(255,255,255,0.35)",
-                                                    border:     `1px solid ${isActive?"rgba(139,92,246,0.5)":"rgba(255,255,255,0.08)"}`,
-                                                  }}>
-                                                  {n}x{val > 0 ? ` ${val.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}` : ""}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
-
-                                    {bancos.length > 0 && (
-                                      <select value={editBanco[a.id]||""} onChange={e=>setEditBanco(p=>({...p,[a.id]:e.target.value}))} onClick={e=>e.stopPropagation()}
-                                        className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none mb-1.5">
-                                        <option value="">— Banco (opcional) —</option>
-                                        {bancos.map(b=><option key={b.id} value={b.id}>{b.nome}</option>)}
-                                      </select>
-                                    )}
-                                    <button onClick={e=>{e.stopPropagation();handleRegistrarPagamento(a);}}
-                                      disabled={!editValor[a.id]||saving===a.id+"_pay"}
-                                      className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-black disabled:opacity-40"
-                                      style={{ background:"rgba(16,185,129,0.15)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.3)" }}>
-                                      <DollarSign size={10}/>
-                                      {saving===a.id+"_pay"?"Registrando...":"Registrar Pagamento"}
-                                    </button>
-                                  </div>
-                                )}
-
-                                {/* Obs */}
-                                <textarea value={editObs[a.id]||""} onChange={e=>setEditObs(p=>({...p,[a.id]:e.target.value}))} onClick={e=>e.stopPropagation()}
-                                  onBlur={()=>updateAgendamento(a.id,{observacoes:editObs[a.id]||null})}
-                                  placeholder="Observações..." rows={2}
-                                  className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none resize-none" />
-
-                                {/* Actions */}
-                                <div className="grid grid-cols-2 gap-1.5" onClick={e=>e.stopPropagation()}>
-                                  {!isRealizado && !isCancelled && (
-                                    <button onClick={e=>{e.stopPropagation();handleRealizado(a);}} disabled={saving===a.id}
-                                      className="flex items-center justify-center gap-1 py-2 rounded-lg text-[9px] font-black"
-                                      style={{ background:"rgba(16,185,129,0.2)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.4)" }}>
-                                      <CheckCircle2 size={11}/>{saving===a.id?"...":"Realizado"}
-                                    </button>
-                                  )}
-                                  {onSelectLead && a.lead && (
-                                    <button onClick={e=>{e.stopPropagation();onSelectLead(a.lead);}}
-                                      className="flex items-center justify-center gap-1 py-2 rounded-lg text-[9px] font-black"
-                                      style={{ background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:"1.5px solid rgba(255,255,255,0.1)" }}>
-                                      <ExternalLink size={10}/>Ficha
-                                    </button>
-                                  )}
-                                  {!isCancelled && (
-                                    <button onClick={e=>{e.stopPropagation();handleCancel(a);}}
-                                      disabled={saving===a.id || smartCancelLoading===a.id}
-                                      className="col-span-2 flex items-center justify-center gap-1 py-2 rounded-lg text-[9px] font-black"
-                                      style={{ background:"rgba(239,68,68,0.08)",color:"rgba(239,68,68,0.6)",border:"1.5px solid rgba(239,68,68,0.2)" }}>
-                                      <AlertCircle size={10}/>
-                                      {smartCancelLoading===a.id ? "Verificando vagas..." : "Cancelar Consulta"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         );
                       })}
@@ -637,6 +525,258 @@ export default function AgendaPage({
             )}
           </div>
         </div>
+
+        {/* Context menu */}
+        {contextMenu && (() => {
+          const a = contextMenu.appt;
+          const isCancelled = a.status === "cancelado";
+          const isRealizado = a.status === "realizado";
+          const tipoAtual   = editTipo[a.id] || "consulta";
+          return (
+            <>
+              {/* Backdrop */}
+              <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+
+              {/* Menu */}
+              <div className="fixed z-50 rounded-xl border border-white/15 shadow-2xl overflow-hidden min-w-[210px]"
+                style={{
+                  top: Math.min(contextMenu.top, window.innerHeight - 320),
+                  left: Math.min(contextMenu.left, window.innerWidth - 230),
+                  background: "rgba(12,20,52,0.98)",
+                  backdropFilter: "blur(12px)",
+                }}>
+
+                {/* Header do menu */}
+                <div className="px-3.5 py-2.5 border-b border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <p className="text-white font-black text-xs leading-none">
+                    {(a.lead?.name || a.lead?.whatsapp_name || "Paciente").split(" ")[0]}
+                  </p>
+                  <p className="text-white/30 text-[10px] mt-0.5">{a.data_hora.slice(11,16)} · {a.medico?.nome?.replace(/^(Dr\.|Dra\.) /,"") || "—"}</p>
+                </div>
+
+                <div className="py-1">
+                  {/* Mudar Status */}
+                  {!isCancelled && (
+                    <div className="px-2 py-1">
+                      <p className="text-white/25 text-[9px] font-black uppercase tracking-wider px-1.5 mb-1">Mudar Status</p>
+                      <div className="flex gap-1">
+                        {[
+                          { key:"confirmado", label:"Confirmar", color:"#f59e0b", icon:"⏰" },
+                          { key:"realizado",  label:"Realizado",  color:"#10b981", icon:"✅" },
+                        ].map(s => (
+                          <button key={s.key}
+                            onClick={() => { updateAgendamento(a.id,{status:s.key}); load(); setContextMenu(null); }}
+                            className="flex-1 py-1.5 rounded-lg text-[9px] font-black transition border"
+                            style={{
+                              background: a.status===s.key ? `${s.color}25` : "rgba(255,255,255,0.04)",
+                              color: a.status===s.key ? s.color : "rgba(255,255,255,0.45)",
+                              borderColor: a.status===s.key ? `${s.color}50` : "rgba(255,255,255,0.08)",
+                            }}>
+                            {s.icon} {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="h-px bg-white/6 mx-2 my-1" />
+
+                  {/* Tipo */}
+                  {!isCancelled && (
+                    <div className="px-2 pb-1">
+                      <p className="text-white/25 text-[9px] font-black uppercase tracking-wider px-1.5 mb-1">Tipo</p>
+                      <div className="flex gap-1">
+                        {TIPOS.map(t => (
+                          <button key={t.key}
+                            onClick={() => { updateAgendamento(a.id,{tipo_consulta:t.key}); setEditTipo(p=>({...p,[a.id]:t.key})); }}
+                            className="flex-1 py-1 rounded-md text-[8px] font-black transition border"
+                            style={{
+                              background: tipoAtual===t.key?hex(t.color,0.2):"rgba(255,255,255,0.04)",
+                              color: tipoAtual===t.key?t.color:"rgba(255,255,255,0.35)",
+                              borderColor: tipoAtual===t.key?`${t.color}50`:"rgba(255,255,255,0.08)",
+                            }}>
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="h-px bg-white/6 mx-2 my-1" />
+
+                  {/* Remarcar */}
+                  {!isCancelled && !isRealizado && (
+                    rescheduleId === a.id ? (
+                      <div className="px-3 py-2 space-y-1.5">
+                        <input type="datetime-local" value={rescheduleDateTime}
+                          onChange={e => setRescheduleDateTime(e.target.value)}
+                          className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-blue-500/30 text-white text-xs focus:outline-none"
+                          style={{ colorScheme: "dark" }}
+                          autoFocus />
+                        <div className="flex gap-1.5">
+                          <button onClick={() => { handleReschedule(a.id); setContextMenu(null); }}
+                            disabled={!rescheduleDateTime || rescheduleSaving}
+                            className="flex-1 py-1.5 rounded-lg text-[9px] font-black disabled:opacity-40"
+                            style={{ background:"rgba(59,130,246,0.2)",color:"#93c5fd",border:"1.5px solid rgba(59,130,246,0.4)" }}>
+                            {rescheduleSaving ? "Salvando..." : "✓ Confirmar"}
+                          </button>
+                          <button onClick={() => { setRescheduleId(null); setRescheduleDateTime(""); }}
+                            className="px-3 py-1.5 rounded-lg text-[9px] font-black"
+                            style={{ background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.4)",border:"1.5px solid rgba(255,255,255,0.08)" }}>
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-white/70 hover:bg-white/6 hover:text-white transition"
+                        onClick={() => { setRescheduleId(a.id); setRescheduleDateTime(a.data_hora.slice(0,16)); }}>
+                        <CalendarDays size={13} className="shrink-0 text-blue-400" />
+                        Remarcar Agendamento
+                      </button>
+                    )
+                  )}
+
+                  {/* Registrar Pagamento */}
+                  {!isCancelled && (
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-white/70 hover:bg-white/6 hover:text-white transition"
+                      onClick={() => { setExpandedId(a.id); setContextMenu(null); }}>
+                      <DollarSign size={13} className="shrink-0 text-emerald-400" />
+                      Registrar Pagamento
+                    </button>
+                  )}
+
+                  {/* Abrir Ficha */}
+                  {onSelectLead && a.lead && (
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-white/70 hover:bg-white/6 hover:text-white transition"
+                      onClick={() => { onSelectLead(a.lead); setContextMenu(null); }}>
+                      <ExternalLink size={13} className="shrink-0 text-violet-400" />
+                      Abrir Ficha do Paciente
+                    </button>
+                  )}
+
+                  <div className="h-px bg-white/6 mx-2 my-1" />
+
+                  {/* Cancelar */}
+                  {!isCancelled && (
+                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-rose-400/70 hover:bg-rose-500/8 hover:text-rose-300 transition"
+                      onClick={() => { handleCancel(a); setContextMenu(null); }}
+                      disabled={!!saving || smartCancelLoading === a.id}>
+                      <AlertCircle size={13} className="shrink-0" />
+                      {smartCancelLoading === a.id ? "Verificando..." : "Cancelar Consulta"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
+        {/* Expanded panel para pagamento */}
+        {expandedId && (() => {
+          const a = agendamentos.find(ag => ag.id === expandedId);
+          if (!a) return null;
+          const isRealizado = a.status === "realizado";
+          const isCancelled = a.status === "cancelado";
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: "rgba(0,0,10,0.75)", backdropFilter: "blur(6px)" }}
+              onClick={e => { if (e.target === e.currentTarget) setExpandedId(null); }}>
+              <div className="w-full max-w-sm rounded-2xl border border-white/10 overflow-hidden"
+                style={{ background: "rgba(10,18,48,0.98)" }}>
+
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+                  <div>
+                    <p className="text-white font-black text-sm">{a.lead?.name || a.lead?.whatsapp_name || "Paciente"}</p>
+                    {a.lead?.phone && <p className="text-white/30 text-[10px] font-mono">+{a.lead.phone}</p>}
+                  </div>
+                  <button onClick={() => setExpandedId(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40"><X size={15}/></button>
+                </div>
+
+                <div className="px-4 py-4 space-y-3">
+                  {/* Pagamento */}
+                  {!isRealizado && !isCancelled && (
+                    <div>
+                      <p className="text-white/30 text-[9px] font-black uppercase mb-1.5">Pagamento</p>
+                      <div className="flex gap-1.5 mb-1.5">
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs font-bold">R$</span>
+                          <input value={editValor[a.id]||""} onChange={e=>setEditValor(p=>({...p,[a.id]:e.target.value}))}
+                            placeholder="0,00"
+                            className="w-full pl-7 pr-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none" />
+                        </div>
+                        <select value={editForma[a.id]||"PIX"} onChange={e=>{setEditForma(p=>({...p,[a.id]:e.target.value}));setEditParcelas(p=>({...p,[a.id]:"1"}));}}
+                          className="px-1.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+                          {FORMAS.map(f=><option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+
+                      {(editForma[a.id]||"PIX") === "Cartão Crédito" && (() => {
+                        const valorNum = parseFloat((editValor[a.id]||"0").replace(",",".")) || 0;
+                        const parc     = parseInt(editParcelas[a.id]) || 1;
+                        const mensal   = parc > 0 && valorNum > 0 ? valorNum / parc : 0;
+                        return (
+                          <div className="mb-1.5 rounded-lg p-2 border border-violet-500/25" style={{ background:"rgba(139,92,246,0.08)" }}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-violet-300 text-[9px] font-black uppercase">Parcelamento</span>
+                              {mensal > 0 && parc > 1 && <span className="text-violet-200 text-[10px] font-black">{parc}x de {mensal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>}
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
+                                const val = valorNum > 0 ? valorNum / n : 0;
+                                const isActive = parc === n;
+                                return (
+                                  <button key={n} type="button" onClick={()=>setEditParcelas(p=>({...p,[a.id]:String(n)}))}
+                                    className="px-2 py-1 rounded-md text-[9px] font-black transition"
+                                    style={{
+                                      background: isActive?"rgba(139,92,246,0.35)":"rgba(255,255,255,0.05)",
+                                      color:      isActive?"#c4b5fd":"rgba(255,255,255,0.35)",
+                                      border:     `1px solid ${isActive?"rgba(139,92,246,0.5)":"rgba(255,255,255,0.08)"}`,
+                                    }}>
+                                    {n}x{val > 0 ? ` ${val.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}` : ""}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {bancos.length > 0 && (
+                        <select value={editBanco[a.id]||""} onChange={e=>setEditBanco(p=>({...p,[a.id]:e.target.value}))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none mb-1.5">
+                          <option value="">— Banco (opcional) —</option>
+                          {bancos.map(b=><option key={b.id} value={b.id}>{b.nome}</option>)}
+                        </select>
+                      )}
+
+                      <button onClick={()=>handleRegistrarPagamento(a)}
+                        disabled={!editValor[a.id]||saving===a.id+"_pay"}
+                        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-black disabled:opacity-40"
+                        style={{ background:"rgba(16,185,129,0.15)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.3)" }}>
+                        <DollarSign size={10}/>{saving===a.id+"_pay"?"Registrando...":"Registrar Pagamento"}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Marcar Realizado */}
+                  {!isRealizado && !isCancelled && (
+                    <button onClick={()=>handleRealizado(a)} disabled={saving===a.id}
+                      className="w-full flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black disabled:opacity-40"
+                      style={{ background:"rgba(16,185,129,0.2)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.4)" }}>
+                      <CheckCircle2 size={13}/>{saving===a.id?"Salvando...":"Marcar como Realizado"}
+                    </button>
+                  )}
+
+                  {/* Obs */}
+                  <textarea value={editObs[a.id]||""} onChange={e=>setEditObs(p=>({...p,[a.id]:e.target.value}))}
+                    onBlur={()=>updateAgendamento(a.id,{observacoes:editObs[a.id]||null})}
+                    placeholder="Observações..." rows={2}
+                    className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none resize-none" />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* New appointment mini-modal */}
         {newAppt && (
@@ -1011,7 +1151,6 @@ export default function AgendaPage({
                     const nome  = (a.lead?.name||a.lead?.whatsapp_name||"Paciente").split(" ")[0];
                     return (
                       <button key={a.id} onClick={() => {
-                        setExpandedId(p => p === a.id ? null : a.id);
                         setTimeout(() => {
                           const slot = timeToSlot(a.data_hora);
                           if (gridRef.current) gridRef.current.scrollTop = slot * SLOT_H - 80;

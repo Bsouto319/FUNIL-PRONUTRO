@@ -4,7 +4,7 @@ import {
   Calendar, DollarSign, Activity, ChevronUp, ChevronDown, Users, Clock, Zap,
   MessageSquare, Hash, PhoneCall, CheckCircle, XCircle, Bot, Download, Search,
 } from "lucide-react";
-import { STAGES } from "../lib/api";
+import { STAGES, fetchMessages } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 const PT_STOPWORDS = new Set([
@@ -196,6 +196,9 @@ export default function RelatorioPage() {
   const [convLoading, setConvLoading]     = useState(false);
   const [convFilter, setConvFilter]       = useState<"todos" | "convertidos" | "nao_convertidos">("todos");
   const [convSearch, setConvSearch]       = useState("");
+  const [selectedConvLead, setSelectedConvLead] = useState<any | null>(null);
+  const [convMessages, setConvMessages]         = useState<any[]>([]);
+  const [convMsgLoading, setConvMsgLoading]     = useState(false);
 
   const loadConversao = useCallback(async () => {
     setConvLoading(true);
@@ -229,6 +232,15 @@ export default function RelatorioPage() {
     const a    = document.createElement("a"); a.href = url;
     a.download = `leads-nao-convertidos-${new Date().toISOString().slice(0,10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function openConvMessages(lead: any) {
+    setSelectedConvLead(lead);
+    setConvMessages([]);
+    setConvMsgLoading(true);
+    const msgs = await fetchMessages(lead.id);
+    setConvMessages(msgs || []);
+    setConvMsgLoading(false);
   }
 
   const load = useCallback(async () => {
@@ -591,7 +603,7 @@ export default function RelatorioPage() {
                       const nome = l.name || l.whatsapp_name || `+${l.phone}`;
                       const stageLabel = STAGES.find(s => s.key === l.stage)?.label || l.stage;
                       return (
-                        <tr key={l.id} className="hover:bg-white/[0.03] transition">
+                        <tr key={l.id} className="hover:bg-white/[0.06] transition cursor-pointer" onClick={() => openConvMessages(l)}>
                           <td className="px-4 py-2">
                             {l.numero_prontuario ? (
                               <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/10 text-white/50">
@@ -1437,6 +1449,89 @@ export default function RelatorioPage() {
         </>
       ) : null}
       </>}
+
+      {/* Modal histórico de mensagens */}
+      {selectedConvLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,10,0.82)", backdropFilter: "blur(8px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setSelectedConvLead(null); }}>
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 overflow-hidden flex flex-col"
+            style={{ background: "rgba(10,18,48,0.99)", maxHeight: "85vh" }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/8 shrink-0"
+              style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="flex items-center gap-2.5">
+                <MessageSquare size={15} className="text-violet-400" />
+                <div>
+                  <p className="text-white font-black text-sm leading-none">
+                    {selectedConvLead.name || selectedConvLead.whatsapp_name || `+${selectedConvLead.phone}`}
+                  </p>
+                  <p className="text-white/30 text-[10px] mt-0.5 font-mono">+{selectedConvLead.phone}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedConvLead(null)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 transition">
+                <XCircle size={15} />
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+              {convMsgLoading ? (
+                <div className="flex items-center justify-center py-12 text-white/25 text-sm gap-2">
+                  <RefreshCw size={14} className="animate-spin" /> Carregando mensagens...
+                </div>
+              ) : convMessages.length === 0 ? (
+                <div className="text-center py-12 text-white/20 text-sm">Nenhuma mensagem encontrada</div>
+              ) : convMessages.map((msg: any, i: number) => {
+                const isIn = msg.direction === "in";
+                const isMaria = !isIn && normalizeSender(msg.sender_nome || "") === "Maria IA";
+                const sender = isIn ? "Paciente" : normalizeSender(msg.sender_nome || "Clínica");
+                const time = new Date(msg.created_at).toLocaleString("pt-BR", {
+                  day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+                });
+                return (
+                  <div key={i} className={`flex ${isIn ? "justify-start" : "justify-end"}`}>
+                    <div className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 ${
+                      isIn
+                        ? "rounded-tl-sm"
+                        : isMaria
+                        ? "rounded-tr-sm"
+                        : "rounded-tr-sm"
+                    }`}
+                      style={{
+                        background: isIn
+                          ? "rgba(255,255,255,0.07)"
+                          : isMaria
+                          ? "rgba(139,92,246,0.22)"
+                          : "rgba(5,150,105,0.22)",
+                        border: `1px solid ${isIn ? "rgba(255,255,255,0.08)" : isMaria ? "rgba(139,92,246,0.3)" : "rgba(16,185,129,0.3)"}`,
+                      }}>
+                      <p className="text-[9px] font-black mb-1 opacity-60"
+                        style={{ color: isIn ? "#94a3b8" : isMaria ? "#c4b5fd" : "#6ee7b7" }}>
+                        {isIn ? "👤" : isMaria ? "🤖" : "💬"} {sender}
+                      </p>
+                      <p className="text-white text-xs leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                      <p className="text-[9px] mt-1.5 opacity-40 text-right">{time}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 px-5 py-3 border-t border-white/8 flex items-center justify-between"
+              style={{ background: "rgba(255,255,255,0.02)" }}>
+              <span className="text-white/25 text-[10px]">{convMessages.length} mensagens</span>
+              <button onClick={() => setSelectedConvLead(null)}
+                className="px-4 py-1.5 rounded-lg text-xs font-black border border-white/10 text-white/50 hover:bg-white/10 transition">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
