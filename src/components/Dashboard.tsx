@@ -6,6 +6,7 @@ import AgendaPage from "./AgendaPage";
 import AdminPanel from "./AdminPanel";
 import FinanceiroPage from "./FinanceiroPage";
 import RelatorioPage from "./RelatorioPage";
+import FollowupPage from "./FollowupPage";
 import ProntuarioPage from "./ProntuarioPage";
 import PendenciasPage from "./PendenciasPage";
 import PacientesPage from "./PacientesPage";
@@ -15,7 +16,7 @@ import TeamChat from "./TeamChat";
 import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
-type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin";
+type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin" | "followup";
 
 export default function Dashboard({ user }: { user: any }) {
   const [leads, setLeads]         = useState<any[]>([]);
@@ -510,17 +511,17 @@ export default function Dashboard({ user }: { user: any }) {
               <button
                 onClick={() => setShowMoreMenu(m => !m)}
                 className={`relative flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  ["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page)
+                  ["pendencias","financeiro","relatorio","followup","prontuario","estoque","admin"].includes(page)
                     ? "bg-white/15 text-white"
                     : "text-white/40 hover:text-white/70 hover:bg-white/5"
                 }`}
               >
-                {["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page)
-                  ? (page === "pendencias" ? "💰 Pendências" : page === "financeiro" ? "Financeiro" : page === "relatorio" ? "Relatório" : page === "prontuario" ? "Prontuário" : page === "estoque" ? "📦 Estoque" : "Admin")
+                {["pendencias","financeiro","relatorio","followup","prontuario","estoque","admin"].includes(page)
+                  ? (page === "pendencias" ? "💰 Pendências" : page === "financeiro" ? "Financeiro" : page === "relatorio" ? "Relatório" : page === "followup" ? "🤖 Follow-up IA" : page === "prontuario" ? "Prontuário" : page === "estoque" ? "📦 Estoque" : "Admin")
                   : "Mais"}
                 <ChevronDown size={11} className={`transition-transform ${showMoreMenu ? "rotate-180" : ""}`} />
                 {/* Badge pendências */}
-                {leads.filter(l => l.pendencia_financeira).length > 0 && !["pendencias","financeiro","relatorio","prontuario","estoque","admin"].includes(page) && (
+                {leads.filter(l => l.pendencia_financeira).length > 0 && !["pendencias","financeiro","relatorio","followup","prontuario","estoque","admin"].includes(page) && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-yellow-500 text-white text-[9px] font-black flex items-center justify-center px-1">
                     {leads.filter(l => l.pendencia_financeira).length}
                   </span>
@@ -533,6 +534,7 @@ export default function Dashboard({ user }: { user: any }) {
                     { key: "pendencias", label: "💰 Pendências" },
                     { key: "financeiro", label: "Financeiro" },
                     { key: "relatorio",  label: "Relatório" },
+                    { key: "followup",   label: "🤖 Follow-up IA" },
                     { key: "prontuario", label: "Prontuário" },
                     { key: "estoque",    label: "📦 Estoque" },
                     { key: "admin",      label: "⚙️ Admin" },
@@ -898,6 +900,7 @@ export default function Dashboard({ user }: { user: any }) {
         {page === "pendencias" && <PendenciasPage leads={leads} onSelect={setSelected} onResolved={load} />}
         {page === "financeiro" && <FinanceiroPage initialPaciente={financeiroPatient} />}
         {page === "relatorio" && <RelatorioPage />}
+        {page === "followup" && <FollowupPage onSelectLead={setSelected} />}
         {page === "prontuario" && <ProntuarioPage />}
         {page === "estoque" && <EstoquePage />}
         {page === "admin" && <AdminPanel user={user} />}

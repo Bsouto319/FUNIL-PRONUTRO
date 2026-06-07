@@ -1173,3 +1173,49 @@ export async function insertEstoqueMovimento(payload: {
   }
   return true;
 }
+
+// ── Follow-up Plans ───────────────────────────────────────────────────────────
+
+export async function fetchFollowupPlans() {
+  const { data, error } = await supabase
+    .from("pn_followup_plans")
+    .select(`
+      *,
+      lead:pn_leads(id, name, whatsapp_name, phone, stage, numero_prontuario)
+    `)
+    .order("updated_at", { ascending: false });
+  if (error) console.error("fetchFollowupPlans", error.message);
+  return data || [];
+}
+
+export async function analyzeLeadFollowup(leadId: string): Promise<any> {
+  const { data, error } = await supabase.functions.invoke("pronutro-followup", {
+    method: "POST",
+    body: { lead_id: leadId },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function analyzeAllFollowup(): Promise<any> {
+  const { data, error } = await supabase.functions.invoke("pronutro-followup", {
+    method: "POST",
+    body: { batch: true },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFollowupStatus(id: string, status: "pendente" | "enviado" | "descartado") {
+  const update: any = { status };
+  if (status === "enviado") update.enviado_at = new Date().toISOString();
+  const { error } = await supabase.from("pn_followup_plans").update(update).eq("id", id);
+  if (error) console.error("updateFollowupStatus", error.message);
+  return !error;
+}
+
+export async function editFollowupMessage(id: string, mensagem_sugerida: string) {
+  const { error } = await supabase.from("pn_followup_plans").update({ mensagem_sugerida }).eq("id", id);
+  if (error) console.error("editFollowupMessage", error.message);
+  return !error;
+}
