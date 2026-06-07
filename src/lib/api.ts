@@ -8,6 +8,7 @@ export const STAGES = [
   { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: "#0d9488", kanban: true  },
   { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: "#ca8a04", kanban: true  },
   { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: "#7c3aed", kanban: true  },
+  { key: "lista_espera",   label: "⏳ Lista de Espera", color: "bg-orange-400/15 text-orange-300", headerBg: "#ea580c", kanban: true  },
   { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669", kanban: false },
   { key: "resolvido",      label: "Histórico",      color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5", kanban: false },
 ];
@@ -63,7 +64,15 @@ export async function fetchLeads(search = "") {
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .order("created_at", { ascending: false });
-  if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+  if (search) {
+    const stripped = search.trim();
+    const numPart  = stripped.replace(/^#/, "");
+    if (/^\d+$/.test(numPart)) {
+      q = q.or(`name.ilike.%${stripped}%,phone.ilike.%${stripped}%,numero_prontuario.eq.${numPart}`);
+    } else {
+      q = q.or(`name.ilike.%${stripped}%,phone.ilike.%${stripped}%`);
+    }
+  }
   const { data, error } = await q;
   if (error || !data) {
     console.warn("fetchLeads offline — usando cache");
@@ -91,6 +100,25 @@ export async function fetchStats() {
   };
   if (stats.total > 0) setCache("stats", stats);
   return stats.total > 0 ? stats : (getCache<typeof stats>("stats") || stats);
+}
+
+export async function updateLeadListaEspera(id: string, dataHora: string | null) {
+  const { error } = await supabase
+    .from("pn_leads")
+    .update({ lista_espera_data_hora: dataHora, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) console.error("updateLeadListaEspera", error.message);
+}
+
+export async function fetchListaEsperaForDate(dateStr: string) {
+  const { data, error } = await supabase
+    .from("pn_leads")
+    .select("id, name, whatsapp_name, phone, numero_prontuario, lista_espera_data_hora")
+    .eq("stage", "lista_espera")
+    .gte("lista_espera_data_hora", `${dateStr}T00:00:00`)
+    .lte("lista_espera_data_hora", `${dateStr}T23:59:59`);
+  if (error) console.error("fetchListaEsperaForDate", error.message);
+  return data || [];
 }
 
 export async function updateLeadStage(id: string, stage: string) {

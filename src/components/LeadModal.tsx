@@ -6,6 +6,7 @@ import {
   fetchNotasFiscais, uploadNotaFiscal, getNotaFiscalUrl, deleteNotaFiscal,
   updateLeadProfile, updateLeadPendencia, sendMediaWhatsApp, sendPttWhatsApp,
   fetchQuickReplies, createQuickReply, deleteQuickReply, deleteMessage,
+  updateLeadListaEspera,
 } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
@@ -64,6 +65,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [savingQR, setSavingQR]           = useState(false);
   const [forwardText, setForwardText]     = useState<string | null>(null);
   const [copied, setCopied]               = useState(false);
+  const [listaEsperaDateTime, setListaEsperaDateTime] = useState<string>(
+    lead.lista_espera_data_hora ? new Date(lead.lista_espera_data_hora).toISOString().slice(0,16) : ""
+  );
 
   // Perfil / pagamento
   const [perfNome,      setPerfNome]      = useState(lead.name || "");
@@ -167,6 +171,11 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   async function handleStageChange(newStage: string) {
     setStage(newStage);
     await updateLeadStage(lead.id, newStage);
+  }
+
+  async function handleListaEsperaDateChange(value: string) {
+    setListaEsperaDateTime(value);
+    await updateLeadListaEspera(lead.id, value ? new Date(value).toISOString() : null);
   }
 
   async function handleSaveQR() {
@@ -427,12 +436,25 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
             </div>
             <p className="text-white/40 text-xs font-mono">{lead.phone}</p>
           </div>
-          <div className="relative">
-            <select value={stage} onChange={e => handleStageChange(e.target.value)}
-              className="appearance-none pl-3 pr-7 py-1.5 rounded-lg bg-white/10 border border-white/15 text-white text-xs font-bold focus:outline-none cursor-pointer">
-              {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <select value={stage} onChange={e => handleStageChange(e.target.value)}
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg bg-white/10 border border-white/15 text-white text-xs font-bold focus:outline-none cursor-pointer">
+                {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+            {stage === "lista_espera" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-orange-300/70 text-[10px] font-bold whitespace-nowrap">⏳ Horário desejado:</span>
+                <input
+                  type="datetime-local"
+                  value={listaEsperaDateTime}
+                  onChange={e => handleListaEsperaDateChange(e.target.value)}
+                  className="px-2 py-1 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-200 text-[10px] focus:outline-none focus:ring-1 focus:ring-orange-500/40"
+                />
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition">
             <X size={16} className="text-white/50" />

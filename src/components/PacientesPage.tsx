@@ -32,12 +32,14 @@ export default function PacientesPage({ leads, onSelect }: Props) {
     return leads
       .filter(l => {
         if (!q) return true;
-        const name  = (l.name || l.whatsapp_name || "").toLowerCase();
-        const phone = (l.phone || "").toLowerCase();
-        const cpf   = (l.cpf || "").replace(/\D/g, "");
-        const email = (l.email || "").toLowerCase();
-        const notes = (l.notes || "").toLowerCase();
-        return name.includes(q) || phone.includes(q) || cpf.includes(q.replace(/\D/g, "")) || email.includes(q) || notes.includes(q);
+        const name   = (l.name || l.whatsapp_name || "").toLowerCase();
+        const phone  = (l.phone || "").toLowerCase();
+        const cpf    = (l.cpf || "").replace(/\D/g, "");
+        const email  = (l.email || "").toLowerCase();
+        const notes  = (l.notes || "").toLowerCase();
+        const numPart = q.replace(/^#/, "");
+        const prontuario = l.numero_prontuario != null ? String(l.numero_prontuario) : "";
+        return name.includes(q) || phone.includes(q) || cpf.includes(q.replace(/\D/g, "")) || email.includes(q) || notes.includes(q) || prontuario === numPart;
       })
       .sort((a, b) => {
         const aDate = a.last_message_at ?? a.created_at;

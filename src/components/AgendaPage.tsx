@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { fetchAgendamentos, fetchMedicos, fetchBancos, cancelAgendamento, updateAgendamento, insertFinanceiro, fetchLeads, createAgendamento, checkSmartCancel, type SmartCancelCandidate } from "../lib/api";
+import { fetchAgendamentos, fetchMedicos, fetchBancos, cancelAgendamento, updateAgendamento, insertFinanceiro, fetchLeads, createAgendamento, checkSmartCancel, fetchListaEsperaForDate, type SmartCancelCandidate } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { ChevronLeft, ChevronRight, X, Clock, CheckCircle2, XCircle, RefreshCw, Zap, DollarSign, ExternalLink, Stethoscope, AlertCircle, Plus } from "lucide-react";
 
@@ -13,7 +13,7 @@ const TIPOS = [
   { key: "encaixe",  label: "Encaixe",  color: "#d97706" },
 ];
 
-const SLOT_H = 56;       // px per 30min slot
+const SLOT_H = 72;       // px per 30min slot
 const DAY_START = 7;     // 07:00
 const DAY_END   = 20;    // 20:00
 const TOTAL_SLOTS = (DAY_END - DAY_START) * 2;
@@ -79,6 +79,10 @@ export default function AgendaPage({
   const [smartCancelModal, setSmartCancelModal] = useState<{
     appt: any;
     candidates: SmartCancelCandidate[];
+  } | null>(null);
+  const [listaEsperaAlert, setListaEsperaAlert] = useState<{
+    appt: any;
+    leads: any[];
   } | null>(null);
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -179,6 +183,12 @@ export default function AgendaPage({
     setCalYear(today.getFullYear()); setCalMonth(today.getMonth());
   }
 
+  async function checkListaEsperaAfterCancel(appt: any) {
+    const dateStr = appt.data_hora.slice(0, 10);
+    const waiting = await fetchListaEsperaForDate(dateStr);
+    if (waiting.length > 0) setListaEsperaAlert({ appt, leads: waiting });
+  }
+
   async function handleCancel(appt: any) {
     setSmartCancelLoading(appt.id);
     const candidates = await checkSmartCancel({
@@ -197,17 +207,20 @@ export default function AgendaPage({
       setExpandedId(null);
       await load();
       setSaving(null);
+      await checkListaEsperaAfterCancel(appt);
     }
   }
 
   async function confirmCancel() {
     if (!smartCancelModal) return;
-    setSaving(smartCancelModal.appt.id);
-    await cancelAgendamento(smartCancelModal.appt.id);
+    const appt = smartCancelModal.appt;
+    setSaving(appt.id);
+    await cancelAgendamento(appt.id);
     setSmartCancelModal(null);
     setExpandedId(null);
     await load();
     setSaving(null);
+    await checkListaEsperaAfterCancel(appt);
   }
   async function handleRealizado(a: any) {
     setSaving(a.id);
@@ -837,6 +850,82 @@ export default function AgendaPage({
                   className="flex-1 py-2.5 rounded-xl text-xs font-black transition disabled:opacity-50"
                   style={{ background:"rgba(239,68,68,0.12)", color:"rgba(239,68,68,0.8)", border:"1.5px solid rgba(239,68,68,0.25)" }}>
                   {saving ? "Cancelando..." : "Cancelar mesmo assim"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de Espera Alert Modal */}
+        {listaEsperaAlert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,10,0.80)", backdropFilter: "blur(8px)" }}>
+            <div className="w-full max-w-md rounded-2xl border border-orange-500/30 overflow-hidden shadow-2xl"
+              style={{ background: "rgba(10,18,48,0.99)" }}>
+
+              <div className="px-5 py-4 border-b border-white/8" style={{ background: "rgba(234,88,12,0.10)" }}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">⏳</span>
+                  <div>
+                    <p className="text-orange-300 font-black text-sm">Lista de Espera — Horário Disponível!</p>
+                    <p className="text-white/40 text-[10px] mt-0.5">
+                      Estes pacientes aguardam um horário neste dia
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 border-b border-white/6" style={{ background: "rgba(255,255,255,0.02)" }}>
+                <p className="text-white/30 text-[9px] font-black uppercase tracking-wider mb-1">Horário cancelado</p>
+                <p className="text-white font-bold text-sm">
+                  {new Date(listaEsperaAlert.appt.data_hora).toLocaleDateString("pt-BR", {
+                    weekday: "long", day: "2-digit", month: "2-digit",
+                  })} às {listaEsperaAlert.appt.data_hora.slice(11, 16)}
+                </p>
+                <p className="text-white/40 text-xs mt-0.5">{listaEsperaAlert.appt.medico?.nome || ""}</p>
+              </div>
+
+              <div className="px-5 py-3 space-y-2.5 max-h-64 overflow-y-auto">
+                <p className="text-white/30 text-[9px] font-black uppercase tracking-wider">
+                  {listaEsperaAlert.leads.length} paciente{listaEsperaAlert.leads.length !== 1 ? "s" : ""} na lista de espera para este dia
+                </p>
+                {listaEsperaAlert.leads.map((l, i) => {
+                  const nome = l.name || l.whatsapp_name || `+${l.phone}`;
+                  return (
+                    <div key={l.id} className="rounded-xl p-3 border border-orange-500/20"
+                      style={{ background: "rgba(234,88,12,0.06)" }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-300 font-black text-xs shrink-0">
+                            {i + 1}
+                          </div>
+                          <div>
+                            <p className="text-white font-black text-xs">{nome}</p>
+                            {l.numero_prontuario && (
+                              <p className="text-orange-300/60 text-[9px]">#{String(l.numero_prontuario).padStart(3, "0")}</p>
+                            )}
+                          </div>
+                        </div>
+                        {l.phone && (
+                          <a
+                            href={`https://wa.me/${l.phone}?text=Ol%C3%A1%20${encodeURIComponent(nome.split(" ")[0])}%2C%20abriu%20um%20hor%C3%A1rio%20no%20dia%20${encodeURIComponent(listaEsperaAlert.appt.data_hora.slice(0,10))}%20%C3%A0s%20${encodeURIComponent(listaEsperaAlert.appt.data_hora.slice(11,16))}%2C%20tem%20interesse%3F`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black transition"
+                            style={{ background: "rgba(37,211,102,0.15)", color: "#25d366", border: "1px solid rgba(37,211,102,0.3)" }}>
+                            WhatsApp
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 py-4 border-t border-white/8">
+                <button onClick={() => setListaEsperaAlert(null)}
+                  className="w-full py-2.5 rounded-xl text-xs font-black transition"
+                  style={{ background: "rgba(234,88,12,0.15)", color: "#fb923c", border: "1.5px solid rgba(234,88,12,0.35)" }}>
+                  Fechar
                 </button>
               </div>
             </div>

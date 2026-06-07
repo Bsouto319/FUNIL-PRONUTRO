@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import {
   TrendingUp, TrendingDown, AlertTriangle, RefreshCw, Star, Target, Brain,
   Calendar, DollarSign, Activity, ChevronUp, ChevronDown, Users, Clock, Zap,
-  MessageSquare, Hash, PhoneCall, CheckCircle, XCircle, Bot,
+  MessageSquare, Hash, PhoneCall, CheckCircle, XCircle, Bot, Download, Search,
 } from "lucide-react";
+import { STAGES } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 const PT_STOPWORDS = new Set([
@@ -189,6 +190,46 @@ export default function RelatorioPage() {
   const [loading, setLoading]       = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg]         = useState("");
+
+  const [reportTab, setReportTab]         = useState<"analytics" | "conversao">("analytics");
+  const [convLeads, setConvLeads]         = useState<any[]>([]);
+  const [convLoading, setConvLoading]     = useState(false);
+  const [convFilter, setConvFilter]       = useState<"todos" | "convertidos" | "nao_convertidos">("todos");
+  const [convSearch, setConvSearch]       = useState("");
+
+  const loadConversao = useCallback(async () => {
+    setConvLoading(true);
+    const { data } = await supabase
+      .from("pn_leads")
+      .select("id, name, whatsapp_name, phone, numero_prontuario, stage, created_at, pn_agendamentos(id)")
+      .order("numero_prontuario", { ascending: true, nullsFirst: false });
+    setConvLeads(data || []);
+    setConvLoading(false);
+  }, []);
+
+  useEffect(() => { if (reportTab === "conversao") loadConversao(); }, [reportTab]);
+
+  function isConvertido(l: any): boolean {
+    return (l.pn_agendamentos?.length > 0) || l.stage === "agendado" || l.stage === "resolvido";
+  }
+
+  function exportConvCSV() {
+    const rows = convLeads
+      .filter(l => !isConvertido(l))
+      .map(l => [
+        l.numero_prontuario ? `#${String(l.numero_prontuario).padStart(3,"0")}` : "—",
+        l.name || l.whatsapp_name || "",
+        l.phone,
+        l.stage,
+        new Date(l.created_at).toLocaleDateString("pt-BR"),
+      ]);
+    const csv = [["#","Nome","Telefone","Stage","Entrada"], ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a"); a.href = url;
+    a.download = `leads-nao-convertidos-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
 
   const load = useCallback(async () => {
     if (period === "custom" && (!customFrom || !customTo || customFrom > customTo + "z")) return;
@@ -441,8 +482,168 @@ export default function RelatorioPage() {
     ? `${customFrom.split("-").reverse().join("/")} → ${customTo.split("-").reverse().join("/")}`
     : period === "7d" ? "últimos 7 dias" : period === "30d" ? "últimos 30 dias" : "últimos 90 dias";
 
+  const convFiltered = convLeads
+    .filter(l => {
+      const conv = isConvertido(l);
+      if (convFilter === "convertidos"    && !conv) return false;
+      if (convFilter === "nao_convertidos" && conv) return false;
+      if (convSearch) {
+        const q = convSearch.replace(/^#/,"").toLowerCase();
+        const nome = (l.name || l.whatsapp_name || "").toLowerCase();
+        const num  = String(l.numero_prontuario || "");
+        return nome.includes(q) || l.phone?.includes(q) || num.includes(q);
+      }
+      return true;
+    });
+
+  const convTotal      = convLeads.length;
+  const convConv       = convLeads.filter(isConvertido).length;
+  const convNao        = convTotal - convConv;
+  const convTaxa       = convTotal > 0 ? Math.round(convConv / convTotal * 100) : 0;
+
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
+
+      {/* Tab switcher topo */}
+      <div className="flex gap-1 border-b border-white/10 pb-3">
+        <button onClick={() => setReportTab("analytics")}
+          className={`px-4 py-1.5 rounded-lg text-xs font-black transition ${reportTab === "analytics" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70"}`}>
+          📊 Analytics
+        </button>
+        <button onClick={() => setReportTab("conversao")}
+          className={`px-4 py-1.5 rounded-lg text-xs font-black transition ${reportTab === "conversao" ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70"}`}>
+          🎯 Conversão de Leads
+        </button>
+      </div>
+
+      {/* ═══ TAB: CONVERSÃO ══════════════════════════════════════════════ */}
+      {reportTab === "conversao" && (
+        <div className="space-y-5">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Total Leads", value: convTotal, color: "from-sky-500 to-blue-600", icon: Users },
+              { label: "Viraram Pacientes", value: convConv, color: "from-emerald-500 to-teal-600", icon: CheckCircle },
+              { label: "Não Convertidos", value: convNao, color: "from-rose-500 to-red-600", icon: XCircle },
+              { label: "Taxa Conversão", value: `${convTaxa}%`, color: "from-violet-500 to-purple-600", icon: Target },
+            ].map(({ label, value, color, icon: Icon }) => (
+              <div key={label} className="rounded-2xl border border-white/10 p-4 flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center`}>
+                  <Icon size={15} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-2xl leading-none">{convLoading ? "—" : value}</p>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mt-1">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Filtros + busca + export */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              { key: "todos",            label: "Todos" },
+              { key: "convertidos",      label: "✅ Pacientes" },
+              { key: "nao_convertidos",  label: "❌ Não convertidos" },
+            ].map(opt => (
+              <button key={opt.key} onClick={() => setConvFilter(opt.key as any)}
+                className={`text-xs font-black px-3 py-1.5 rounded-lg border transition ${
+                  convFilter === opt.key
+                    ? "bg-violet-600/80 text-white border-violet-500/50"
+                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+            <div className="relative flex-1 max-w-xs">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+              <input value={convSearch} onChange={e => setConvSearch(e.target.value)}
+                placeholder="Buscar por nome, # ou telefone..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+            </div>
+            <button onClick={exportConvCSV}
+              className="flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 transition ml-auto">
+              <Download size={11} /> Exportar não convertidos
+            </button>
+          </div>
+
+          {/* Tabela */}
+          {convLoading ? (
+            <div className="flex items-center justify-center py-16 text-white/25 text-sm">Carregando...</div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/8" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">#</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Nome</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Telefone</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Stage</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Consultas</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Entrada</th>
+                      <th className="px-4 py-2.5 text-left text-white/35 font-black uppercase tracking-wider text-[10px]">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {convFiltered.slice(0, 200).map(l => {
+                      const conv = isConvertido(l);
+                      const nome = l.name || l.whatsapp_name || `+${l.phone}`;
+                      const stageLabel = STAGES.find(s => s.key === l.stage)?.label || l.stage;
+                      return (
+                        <tr key={l.id} className="hover:bg-white/[0.03] transition">
+                          <td className="px-4 py-2">
+                            {l.numero_prontuario ? (
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/10 text-white/50">
+                                #{String(l.numero_prontuario).padStart(3,"0")}
+                              </span>
+                            ) : (
+                              <span className="text-white/20">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-white font-bold truncate max-w-[180px]">{nome}</td>
+                          <td className="px-4 py-2 text-white/40 font-mono">{l.phone}</td>
+                          <td className="px-4 py-2 text-white/60">{stageLabel}</td>
+                          <td className="px-4 py-2">
+                            <span className={`font-black text-[11px] ${l.pn_agendamentos?.length > 0 ? "text-emerald-400" : "text-white/25"}`}>
+                              {l.pn_agendamentos?.length || 0}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-white/35">
+                            {new Date(l.created_at).toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"2-digit" })}
+                          </td>
+                          <td className="px-4 py-2">
+                            {conv ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                ✅ Paciente
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25">
+                                ❌ Não converteu
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {convFiltered.length > 200 && (
+                  <p className="text-center text-white/25 text-[10px] py-3">
+                    Mostrando 200 de {convFiltered.length} — refine a busca para ver todos
+                  </p>
+                )}
+                {convFiltered.length === 0 && (
+                  <p className="text-center text-white/25 text-sm py-10">Nenhum resultado</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ TAB: ANALYTICS (conteúdo original) ════════════════════════ */}
+      {reportTab === "analytics" && <>
 
       {/* Header ────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -1235,6 +1436,7 @@ export default function RelatorioPage() {
           </div>
         </>
       ) : null}
+      </>}
     </div>
   );
 }

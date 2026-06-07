@@ -47,7 +47,7 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
   }
 
   return (
-    <div className="h-full flex gap-2.5 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="h-full flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
       {KANBAN_STAGES.map(({ key, label, headerBg }) => {
         const stageLeads = leads
           .filter(l => l.stage === key)
@@ -64,7 +64,7 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
           <div
             key={key}
             className="flex-shrink-0 flex flex-col rounded-xl overflow-hidden"
-            style={{ width: "calc((100vw - 88px) / 5)", minWidth: 175 }}
+            style={{ width: "calc((100vw - 88px) / 6)", minWidth: 160 }}
             onDragOver={e => e.preventDefault()}
             onDrop={e => handleDrop(e, key)}
           >
@@ -142,78 +142,74 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onClick={() => onSelect(lead)}
-        className="w-full text-left rounded-lg transition-all duration-150 p-2 cursor-pointer select-none border hover:brightness-110"
+        className="w-full text-left rounded-lg transition-all duration-150 p-1.5 cursor-pointer select-none border hover:brightness-110"
         style={{ background: cardBg, borderColor: borderClr, borderLeftWidth: 3, borderLeftColor: leftClr }}
       >
         {/* Name row */}
-        <div className="flex items-start justify-between gap-1 mb-1">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-start justify-between gap-1 mb-0.5">
+          <div className="flex items-center gap-1 min-w-0">
             <div
-              className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 text-white font-black text-[9px]"
+              className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-white font-black text-[9px]"
               style={{ background: `linear-gradient(135deg, ${stageColor}cc, ${stageColor}66)` }}
             >
               {name[0]?.toUpperCase() || "?"}
             </div>
-            <p className="text-sm font-black text-white truncate leading-tight">{name}</p>
+            <p className="text-xs font-black text-white truncate leading-tight">{name}</p>
           </div>
 
           {/* Badges */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             {isNew && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: stageColor }}>
+              <span className="text-[8px] font-black px-1 py-0.5 rounded-full text-white" style={{ backgroundColor: stageColor }}>
                 NOVO
               </span>
             )}
             {semAtend && !isNew && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
-                SEM RETORNO
+              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+                ⚠
               </span>
             )}
             {mariaAtiva && !isNew && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-violet-500/25 text-violet-300 border border-violet-500/50 animate-pulse">
-                🤖 MARIA
+              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-violet-500/25 text-violet-300 border border-violet-500/50 animate-pulse">
+                🤖
               </span>
             )}
           </div>
         </div>
 
-        {/* Phone + prontuário */}
-        <div className="flex items-center gap-1.5 mb-1">
-          <p className="text-[10px] text-white/35 font-mono">+{lead.phone}</p>
+        {/* Phone + prontuário + last sender */}
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <p className="text-[9px] text-white/30 font-mono truncate min-w-0">+{lead.phone}</p>
           {lead.numero_prontuario && (
-            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/40">
+            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/40 shrink-0">
               #{String(lead.numero_prontuario).padStart(3, "0")}
             </span>
           )}
-        </div>
-
-        {/* GPT Summary */}
-        {lead.summary ? (
-          <p className="text-[10px] leading-relaxed line-clamp-1 mb-1 italic" style={{ color: `${stageColor}cc` }}>
-            🤖 {lead.summary}
-          </p>
-        ) : lead.first_message ? (
-          <p className="text-[10px] text-white/35 line-clamp-1 mb-1">{lead.first_message}</p>
-        ) : <div className="mb-1" />}
-
-        {/* Quem falou por último */}
-        {lead.last_sender_nome && (
-          <div className="flex items-center gap-1 mb-1">
+          {lead.last_sender_nome && (
             <span
-              className="text-[9px] font-black px-1.5 py-0.5 rounded-full border truncate max-w-[120px]"
+              className="text-[8px] font-black px-1 py-0.5 rounded-full border truncate shrink-0 max-w-[60px]"
               style={
                 lead.last_sender_nome === "Maria IA"
                   ? { background: "rgba(109,40,217,0.15)", color: "#c4b5fd", borderColor: "rgba(139,92,246,0.3)" }
                   : { background: "rgba(5,150,105,0.15)", color: "#6ee7b7", borderColor: "rgba(16,185,129,0.3)" }
               }
             >
-              {lead.last_sender_nome === "Maria IA" ? "🤖" : "💬"} {lead.last_sender_nome}
+              {lead.last_sender_nome === "Maria IA" ? "🤖" : "💬"} {lead.last_sender_nome.split(" ")[0]}
             </span>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* GPT Summary ou primeira mensagem */}
+        {lead.summary ? (
+          <p className="text-[9px] leading-tight line-clamp-1 mb-0.5 italic" style={{ color: `${stageColor}cc` }}>
+            {lead.summary}
+          </p>
+        ) : lead.first_message ? (
+          <p className="text-[9px] text-white/30 line-clamp-1 mb-0.5">{lead.first_message}</p>
+        ) : null}
 
         {/* Bottom row: Maria toggle | time | score */}
-        <div className="flex items-center justify-between gap-1 mt-1">
+        <div className="flex items-center justify-between gap-1 mt-0.5">
           {/* Maria toggle */}
           {!PROTECTED.includes(stageKey) ? (
             <button
