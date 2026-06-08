@@ -21,34 +21,53 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Safety timeout: se onAuthStateChange não disparar em 6s, libera a tela
-    const safety = setTimeout(() => setLoading(false), 6000);
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      clearTimeout(safety);
+    function buildFallback(session: any) {
+      const email = session?.user?.email || "";
+      const rawName = email.split("@")[0] || "Usuário";
+      const nome = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      return { id: session.user.id, email, nome, role: "staff", ativo: true };
+    }
+
+    async function loadUser(session: any) {
+      if (!session) return;
+      const fallback = buildFallback(session);
+      try {
+        const userPromise = fetchCurrentUser();
+        const timeoutPromise = new Promise<null>(res => setTimeout(() => res(null), 6000));
+        const u = await Promise.race([userPromise, timeoutPromise]);
+        if (mounted) setUser(u || fallback);
+      } catch {
+        if (mounted) setUser(fallback);
+      }
+    }
+
+    // getSession() aguarda o refresh do token expirado antes de resolver
+    // evita o F5-logout causado pelo INITIAL_SESSION disparar antes do refresh
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
       if (session) {
-        // Timeout de 5s para o fetchCurrentUser não travar indefinidamente
-        const fallback = {
-          id:    session.user.id,
-          email: session.user.email,
-          nome:  session.user.email?.split("@")[0] || "Usuário",
-          role:  "staff",
-          ativo: true,
-        };
-        try {
-          const userPromise = fetchCurrentUser();
-          const timeoutPromise = new Promise<null>(res => setTimeout(() => res(null), 5000));
-          const u = await Promise.race([userPromise, timeoutPromise]);
-          setUser(u || fallback);
-        } catch {
-          setUser(fallback);
-        }
+        await loadUser(session);
       } else {
         setUser(null);
       }
       setLoading(false);
     });
-    return () => { clearTimeout(safety); subscription.unsubscribe(); };
+
+    // Escuta mudanças subsequentes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        await loadUser(session);
+        setLoading(false);
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
   if (loading) {

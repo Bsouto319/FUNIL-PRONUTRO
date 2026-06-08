@@ -29,21 +29,26 @@ export async function getSession() {
 }
 
 export async function fetchCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr) console.error("fetchCurrentUser auth error:", authErr.message);
   if (!user) return null;
-  let { data } = await supabase.from("pn_usuarios").select("*").eq("id", user.id).maybeSingle();
-  if (!data) {
-    // Auto-create profile for first admin login
-    const { data: created } = await supabase.from("pn_usuarios").insert({
-      id: user.id,
-      nome: user.email?.split("@")[0] || "Admin",
-      email: user.email,
-      role: "admin",
-      ativo: true,
-    }).select().single();
-    data = created;
-  }
-  return data;
+
+  const { data, error: dbErr } = await supabase.from("pn_usuarios").select("*").eq("id", user.id).maybeSingle();
+  if (dbErr) console.error("fetchCurrentUser db error:", dbErr.message, "| code:", dbErr.code);
+  if (data) return data;
+
+  // Profile doesn't exist yet — create it (first login for a new Supabase auth user)
+  const rawName = user.email?.split("@")[0] || "Admin";
+  const nome = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+  const { data: created, error: insertErr } = await supabase.from("pn_usuarios").insert({
+    id: user.id,
+    nome,
+    email: user.email,
+    role: "admin",
+    ativo: true,
+  }).select().single();
+  if (insertErr) console.error("fetchCurrentUser insert error:", insertErr.message);
+  return created;
 }
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
@@ -75,7 +80,7 @@ export async function fetchLeads(search = "") {
   }
   const { data, error } = await q;
   if (error || !data) {
-    console.warn("fetchLeads offline — usando cache");
+    console.error("fetchLeads error:", error?.message || "no data", "| code:", error?.code);
     const cached = getCache<any[]>(cacheKey);
     return (cached || []).map((l: any) => ({ ...l, stage: STAGE_MAP[l.stage] ?? l.stage }));
   }
