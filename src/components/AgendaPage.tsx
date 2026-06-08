@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { fetchAgendamentos, fetchMedicos, fetchBancos, cancelAgendamento, updateAgendamento, insertFinanceiro, fetchLeads, createAgendamento, checkSmartCancel, fetchListaEsperaForDate, type SmartCancelCandidate } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { ChevronLeft, ChevronRight, X, Clock, CheckCircle2, XCircle, RefreshCw, Zap, DollarSign, ExternalLink, Stethoscope, AlertCircle, Plus, CalendarDays } from "lucide-react";
@@ -13,7 +13,7 @@ const TIPOS = [
   { key: "encaixe",  label: "Encaixe",  color: "#d97706" },
 ];
 
-const SLOT_H = 72;       // px per 30min slot
+const MIN_SLOT_H = 28;   // minimum px per 30min slot (fits time + name at small font)
 const DAY_START = 7;     // 07:00
 const DAY_END   = 20;    // 20:00
 const TOTAL_SLOTS = (DAY_END - DAY_START) * 2;
@@ -94,15 +94,39 @@ export default function AgendaPage({
   } | null>(null);
 
   const gridRef = useRef<HTMLDivElement>(null);
+  const [slotH, setSlotH] = useState(MIN_SLOT_H);
 
-  // Auto-scroll to current time on mount
+  // Compute dynamic slot height: fit all slots into visible area when possible
   useEffect(() => {
-    if (!loading && gridRef.current && selectedDay === todayStr) {
-      const now = new Date();
-      const slotFromTop = Math.max(0, (now.getHours() - DAY_START) * 2 + Math.floor(now.getMinutes() / 30) - 2);
-      gridRef.current.scrollTop = slotFromTop * SLOT_H;
+    const el = gridRef.current;
+    if (!el) return;
+    function compute() {
+      const available = el!.clientHeight;
+      if (available < 10) return;
+      const dynamic = Math.floor(available / TOTAL_SLOTS);
+      setSlotH(Math.max(MIN_SLOT_H, dynamic));
     }
-  }, [loading]);
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Auto-scroll: first appointment of the day, or current time for today
+  useEffect(() => {
+    if (loading || !gridRef.current) return;
+    const first = [...dayAg]
+      .filter(a => a.status !== "cancelado")
+      .sort((a, b) => a.data_hora.localeCompare(b.data_hora))[0];
+    if (first) {
+      const slot = timeToSlot(first.data_hora);
+      gridRef.current.scrollTo({ top: Math.max(0, slot * slotH - slotH * 2), behavior: "smooth" });
+    } else if (selectedDay === todayStr) {
+      const now = new Date();
+      const slotNow = Math.max(0, (now.getHours() - DAY_START) * 2 + Math.floor(now.getMinutes() / 30) - 2);
+      gridRef.current.scrollTo({ top: slotNow * slotH, behavior: "smooth" });
+    }
+  }, [loading, selectedDay, slotH]);
 
   // New appointment mini-modal
   const [newAppt, setNewAppt] = useState<{ medicoId: string; medicoNome: string; dataHora: string } | null>(null);
@@ -413,18 +437,18 @@ export default function AgendaPage({
           </div>
 
           {/* Scrollable time grid */}
-          <div ref={gridRef} className="flex-1 overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div ref={gridRef} className="flex-1 overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:w-3 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-white/35">
             {loading ? (
               <div className="flex items-center justify-center h-40 text-white/20 text-sm">Carregando...</div>
             ) : (
-              <div className="flex" style={{ minHeight: TOTAL_SLOTS * SLOT_H }}>
+              <div className="flex" style={{ minHeight: TOTAL_SLOTS * slotH }}>
                 {/* Time axis */}
                 <div className="w-14 shrink-0 relative border-r border-white/8">
                   {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
                     <div key={i} className="absolute w-full flex items-start justify-end pr-2"
-                      style={{ top: i * SLOT_H, height: SLOT_H }}>
+                      style={{ top: i * slotH, height: slotH }}>
                       {i % 2 === 0 && (
-                        <span className="text-[9px] font-black text-white/20 -translate-y-1">{slotToLabel(i)}</span>
+                        <span className="text-[9px] font-black text-white/25 -translate-y-1">{slotToLabel(i)}</span>
                       )}
                     </div>
                   ))}
@@ -447,14 +471,14 @@ export default function AgendaPage({
                       {/* Horizontal slot lines */}
                       {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
                         <div key={i} className="absolute w-full border-t"
-                          style={{ top: i * SLOT_H, borderColor: i % 2 === 0 ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.02)" }} />
+                          style={{ top: i * slotH, borderColor: i % 2 === 0 ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.02)" }} />
                       ))}
 
                       {/* Clickable empty slot areas (z-1, behind appointments at z-10) */}
                       {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
                         <div key={`c${i}`}
                           className="absolute w-full group z-[1] cursor-pointer"
-                          style={{ top: i * SLOT_H, height: SLOT_H }}
+                          style={{ top: i * slotH, height: slotH }}
                           onClick={() => openNewAppt(m.id, m.nome, i)}>
                           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                             style={{ background: hex(color, 0.08) }}>
@@ -469,8 +493,8 @@ export default function AgendaPage({
                         if (slot < 0 || slot >= TOTAL_SLOTS) return null;
                         const dur       = a.duracao_min || 30;
                         const heightSlots = Math.max(1, dur / 30);
-                        const topPx     = slot * SLOT_H + 2;
-                        const heightPx  = heightSlots * SLOT_H - 4;
+                        const topPx     = slot * slotH + 2;
+                        const heightPx  = heightSlots * slotH - 4;
                         const nome      = (a.lead?.name || a.lead?.whatsapp_name || "Paciente").split(" ")[0];
                         const isCancelled  = a.status === "cancelado";
                         const isRealizado  = a.status === "realizado";
@@ -1151,10 +1175,8 @@ export default function AgendaPage({
                     const nome  = (a.lead?.name||a.lead?.whatsapp_name||"Paciente").split(" ")[0];
                     return (
                       <button key={a.id} onClick={() => {
-                        setTimeout(() => {
-                          const slot = timeToSlot(a.data_hora);
-                          if (gridRef.current) gridRef.current.scrollTop = slot * SLOT_H - 80;
-                        }, 50);
+                        const slot = timeToSlot(a.data_hora);
+                        gridRef.current?.scrollTo({ top: Math.max(0, slot * slotH - slotH * 2), behavior: "smooth" });
                       }}
                         className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition text-left"
                         style={{ borderLeft: `2px solid ${color}` }}>
@@ -1166,6 +1188,13 @@ export default function AgendaPage({
                   })}
               </div>
             </>
+          )}
+
+          {/* Scroll hint — only shown when grid needs scroll */}
+          {slotH === MIN_SLOT_H && (
+            <div className="px-3 py-2 border-t border-white/5">
+              <p className="text-white/15 text-[8px] text-center">role a grade ↕</p>
+            </div>
           )}
         </div>
       </div>
