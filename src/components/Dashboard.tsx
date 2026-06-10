@@ -198,11 +198,24 @@ export default function Dashboard({ user }: { user: any }) {
       })
       .subscribe();
 
-    const interval = setInterval(() => load(), 15000);
+    // Polling de fallback — cobre quando o Realtime cai
+    const interval = setInterval(() => load(), 8000);
+
+    // Ao voltar pra aba: força reload imediato + reconecta canais
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        load();
+        leadsChannel.subscribe();
+        msgChannel.subscribe();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       supabase.removeChannel(leadsChannel);
       supabase.removeChannel(msgChannel);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [load]);
 

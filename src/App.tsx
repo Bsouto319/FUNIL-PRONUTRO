@@ -44,7 +44,6 @@ export default function App() {
     }
 
     // getSession() aguarda o refresh do token expirado antes de resolver
-    // evita o F5-logout causado pelo INITIAL_SESSION disparar antes do refresh
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!mounted) return;
       if (session) {
@@ -67,7 +66,23 @@ export default function App() {
       }
     });
 
-    return () => { mounted = false; subscription.unsubscribe(); };
+    // Quando Monica volta pra aba, re-valida a sessão sem forçar logout
+    async function handleVisibility() {
+      if (document.visibilityState !== "visible") return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!session) {
+        setUser(null);
+      }
+      // Se tiver sessão, onAuthStateChange cuida do TOKEN_REFRESHED
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   if (loading) {

@@ -1,8 +1,10 @@
 ﻿import { useState } from "react";
 import { signIn } from "../lib/api";
 
+const SAVED_EMAIL_KEY = "pn-last-email";
+
 export default function LoginPage() {
-  const [email, setEmail]       = useState("");
+  const [email, setEmail]       = useState(() => localStorage.getItem(SAVED_EMAIL_KEY) || "");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
@@ -12,7 +14,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     const { error: err } = await signIn(email, password);
-    if (err) setError("Email ou senha incorretos.");
+    if (err) {
+      setError("Email ou senha incorretos.");
+    } else {
+      localStorage.setItem(SAVED_EMAIL_KEY, email);
+    }
     setLoading(false);
   }
 
@@ -27,11 +33,13 @@ export default function LoginPage() {
           <p className="text-blue-200/50 text-sm mt-1">Acesso restrito a funcionários</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} autoComplete="on" className="space-y-4">
           <div>
             <label className="block text-blue-200/60 text-xs font-bold mb-1.5 uppercase tracking-wide">Email</label>
             <input
               type="email"
+              name="email"
+              autoComplete="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -43,6 +51,8 @@ export default function LoginPage() {
             <label className="block text-blue-200/60 text-xs font-bold mb-1.5 uppercase tracking-wide">Senha</label>
             <input
               type="password"
+              name="password"
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
