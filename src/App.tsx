@@ -23,6 +23,11 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
+    // Safety net: se após 10s ainda estiver carregando, mostra login
+    const safetyTimer = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 10000);
+
     function buildFallback(session: any) {
       const email = session?.user?.email || "";
       const rawName = email.split("@")[0] || "Usuário";
@@ -80,6 +85,7 @@ export default function App() {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
