@@ -63,6 +63,16 @@ const STAGE_MAP: Record<string, string> = {
   "inativo":        "resolvido",
 };
 
+export async function fetchLeadById(id: string) {
+  const { data, error } = await supabase
+    .from("pn_leads")
+    .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { ...data, stage: STAGE_MAP[data.stage] ?? data.stage };
+}
+
 export async function fetchLeads(search = "") {
   const cacheKey = `leads_${search}`;
   let q = supabase

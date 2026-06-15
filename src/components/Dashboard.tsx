@@ -13,7 +13,7 @@ import PacientesPage from "./PacientesPage";
 import PacientePresencialModal from "./PacientePresencialModal";
 import EstoquePage from "./EstoquePage";
 import TeamChat from "./TeamChat";
-import { fetchLeads, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
+import { fetchLeads, fetchLeadById, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin" | "followup";
@@ -175,31 +175,50 @@ export default function Dashboard({ user }: { user: any }) {
   useEffect(() => {
     const leadsChannel = supabase
       .channel("pn_leads_rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_leads" }, () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_leads" }, async (payload) => {
         playNewLeadSound();
         if (pageRef.current !== "kanban") setNewLeadAlert(true);
-        load();
+        const newLead = payload.new as any;
+        if (newLead?.id) {
+          const updated = await fetchLeadById(newLead.id);
+          if (updated) setLeads(prev => [updated, ...prev.filter(l => l.id !== updated.id)]);
+        }
       })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pn_leads" }, () => load())
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pn_leads" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pn_leads" }, async (payload) => {
+        const changedLead = payload.new as any;
+        if (changedLead?.id) {
+          const updated = await fetchLeadById(changedLead.id);
+          if (updated) setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
+        }
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pn_leads" }, (payload) => {
+        const deleted = payload.old as any;
+        if (deleted?.id) setLeads(prev => prev.filter(l => l.id !== deleted.id));
+      })
       .subscribe();
 
     const msgChannel = supabase
       .channel("pn_mensagens_rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens" }, (payload) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens" }, async (payload) => {
         const msg = payload.new as any;
         if (msg?.direction === "in") {
           playNewMessageSound();
           if (pageRef.current !== "kanban") setNewMsgAlert(true);
         }
-        // Atualiza o Kanban para refletir last_sender_nome e last_message_at
-        // tanto para mensagem da Monica quanto da Maria ou do paciente
-        load();
+        // Atualiza apenas o lead afetado — sem re-fetch de todos
+        if (msg?.lead_id) {
+          const updated = await fetchLeadById(msg.lead_id);
+          if (updated) setLeads(prev => {
+            const exists = prev.some(l => l.id === updated.id);
+            if (exists) return prev.map(l => l.id === updated.id ? updated : l);
+            return [updated, ...prev];
+          });
+        }
       })
       .subscribe();
 
-    // Polling de fallback — cobre quando o Realtime cai
-    const interval = setInterval(() => load(), 8000);
+    // Polling de fallback — cobre quando o Realtime cai (3s = menos janela cega)
+    const interval = setInterval(() => load(), 3000);
 
     // Ao voltar pra aba: força reload imediato + reconecta canais
     function handleVisibility() {
