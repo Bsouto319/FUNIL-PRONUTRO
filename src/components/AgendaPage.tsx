@@ -349,24 +349,24 @@ export default function AgendaPage({
   const dayLabel = selectedDateObj.toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" });
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background:"linear-gradient(160deg,#0a1628 0%,#0f2240 35%,#071830 100%)" }}>
+    <div className="h-full flex flex-col overflow-hidden">
 
       {/* Top bar */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-white/8 flex items-center gap-3 flex-wrap" style={{ background:"rgba(255,255,255,0.02)" }}>
+      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 flex items-center gap-3 flex-wrap bg-white">
         {/* Date navigation */}
         <div className="flex items-center gap-1.5">
-          <button onClick={prevDay} className="p-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition">
-            <ChevronLeft size={14} className="text-white/60" />
+          <button onClick={prevDay} className="p-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 transition">
+            <ChevronLeft size={14} className="text-slate-600" />
           </button>
           <div className="min-w-[200px] text-center">
-            <p className="text-white font-black text-sm capitalize leading-tight">{dayLabel}</p>
-            {selectedDay === todayStr && <p className="text-emerald-400 text-[9px] font-black uppercase tracking-wider">Hoje</p>}
+            <p className="text-slate-800 font-black text-sm capitalize leading-tight">{dayLabel}</p>
+            {selectedDay === todayStr && <p className="text-emerald-600 text-[9px] font-black uppercase tracking-wider">Hoje</p>}
           </div>
-          <button onClick={nextDay} className="p-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition">
-            <ChevronRight size={14} className="text-white/60" />
+          <button onClick={nextDay} className="p-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 transition">
+            <ChevronRight size={14} className="text-slate-600" />
           </button>
           <button onClick={goToday}
-            className="ml-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-black px-2 py-1 rounded-lg hover:bg-emerald-500/10 transition">
+            className="ml-1 text-[10px] text-emerald-600 hover:text-emerald-700 font-black px-2 py-1 rounded-lg hover:bg-emerald-50 transition">
             Hoje
           </button>
         </div>
@@ -375,7 +375,7 @@ export default function AgendaPage({
         {!isMedico && (
           <div className="flex items-center gap-1 flex-wrap">
             <button onClick={() => setMedicoFiltro("")}
-              className={`text-[10px] font-black px-2.5 py-1 rounded-full border transition ${!medicoFiltro ? "bg-white/15 border-white/25 text-white" : "border-white/8 text-white/35 hover:text-white/60"}`}>
+              className={`text-[10px] font-black px-2.5 py-1 rounded-full border transition ${!medicoFiltro ? "bg-sky-100 border-sky-300 text-sky-700" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>
               Todos
             </button>
             {medicos.map(m => {
@@ -395,7 +395,7 @@ export default function AgendaPage({
 
         {/* Stats pill */}
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-white/25 text-xs">
+          <span className="text-slate-400 text-xs">
             {dayAg.filter(a => a.status !== "cancelado").length} consulta{dayAg.filter(a => a.status !== "cancelado").length !== 1 ? "s" : ""}
           </span>
           {dayAg.filter(a => a.status === "realizado").length > 0 && (

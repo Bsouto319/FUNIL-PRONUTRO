@@ -42,8 +42,8 @@ export default function PendenciasPage({
           <Receipt size={18} className="text-yellow-400" />
         </div>
         <div>
-          <h2 className="text-white font-black text-lg leading-tight">Pendências Financeiras</h2>
-          <p className="text-white/40 text-xs">Pacientes com solicitação de nota fiscal ou pagamento pendente</p>
+          <h2 className="text-slate-800 font-black text-lg leading-tight">Pendências Financeiras</h2>
+          <p className="text-slate-500 text-xs">Pacientes com solicitação de nota fiscal ou pagamento pendente</p>
         </div>
         <span className="ml-auto text-sm font-black px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
           {pending.length} {pending.length === 1 ? "pendência" : "pendências"}
@@ -56,8 +56,8 @@ export default function PendenciasPage({
           <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center">
             <CheckCircle size={28} className="text-emerald-400" />
           </div>
-          <p className="text-white/40 font-bold text-sm">Nenhuma pendência financeira</p>
-          <p className="text-white/20 text-xs">Quando alguém solicitar nota fiscal ou tiver pagamento pendente,<br />marque na conversa e aparecerá aqui.</p>
+          <p className="text-slate-500 font-bold text-sm">Nenhuma pendência financeira</p>
+          <p className="text-slate-400 text-xs">Quando alguém solicitar nota fiscal ou tiver pagamento pendente,<br />marque na conversa e aparecerá aqui.</p>
         </div>
       )}
 
@@ -81,8 +81,8 @@ export default function PendenciasPage({
                 {/* Name + stage */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
-                    <p className="text-white font-black text-sm truncate leading-tight">{name}</p>
-                    <p className="text-white/35 text-[10px] font-mono mt-0.5">+{lead.phone}</p>
+                    <p className="text-slate-800 font-black text-sm truncate leading-tight">{name}</p>
+                    <p className="text-slate-500 text-[10px] font-mono mt-0.5">+{lead.phone}</p>
                   </div>
                   {stage && (
                     <span
@@ -96,7 +96,7 @@ export default function PendenciasPage({
 
                 {/* Notes preview */}
                 {lead.notes && (
-                  <p className="text-[10px] text-white/40 line-clamp-2 mb-3 italic">
+                  <p className="text-[10px] text-slate-500 line-clamp-2 mb-3 italic">
                     {lead.notes}
                   </p>
                 )}
@@ -111,7 +111,7 @@ export default function PendenciasPage({
                 <div className="flex gap-2">
                   <button
                     onClick={() => onSelect(lead)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[11px] font-bold transition"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 hover:text-slate-800 text-[11px] font-bold transition"
                   >
                     <MessageCircle size={12} />
                     Ver conversa

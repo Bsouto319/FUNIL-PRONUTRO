@@ -119,36 +119,36 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-white/8" style={{ background: "rgba(10,20,55,0.5)" }}>
+      <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2">
-              <Brain size={18} className="text-violet-400" />
-              <h2 className="text-white font-black text-lg leading-none">Follow-up IA — Maria</h2>
+              <Brain size={18} className="text-violet-500" />
+              <h2 className="text-slate-800 font-black text-lg leading-none">Follow-up IA — Maria</h2>
             </div>
-            <p className="text-white/30 text-xs mt-1">
-              Maria analisa cada conversa e sugere a mensagem ideal. <span className="text-violet-300 font-bold">Você aprova antes de enviar.</span>
+            <p className="text-slate-500 text-xs mt-1">
+              Maria analisa cada conversa e sugere a mensagem ideal. <span className="text-violet-600 font-bold">Você aprova antes de enviar.</span>
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* KPIs rápidos */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/25" style={{ background: "rgba(245,158,11,0.08)" }}>
-              <AlertTriangle size={11} className="text-amber-400" />
-              <span className="text-amber-300 font-black text-xs">{pendentes} pendentes</span>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50">
+              <AlertTriangle size={11} className="text-amber-500" />
+              <span className="text-amber-700 font-black text-xs">{pendentes} pendentes</span>
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/25" style={{ background: "rgba(16,185,129,0.08)" }}>
-              <Send size={11} className="text-emerald-400" />
-              <span className="text-emerald-300 font-black text-xs">{enviados} enviados</span>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50">
+              <Send size={11} className="text-emerald-600" />
+              <span className="text-emerald-700 font-black text-xs">{enviados} enviados</span>
             </div>
             {/* Analisar lead individual */}
             <div className="relative">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/10 bg-white/5">
-                <Search size={11} className="text-white/30 shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-100">
+                <Search size={11} className="text-slate-400 shrink-0" />
                 <input
                   value={analyzeLeadSearch}
                   onChange={e => handleLeadSearchChange(e.target.value)}
                   placeholder="Analisar lead..."
-                  className="bg-transparent text-white text-xs w-32 placeholder-white/25 focus:outline-none"
+                  className="bg-transparent text-slate-800 text-xs w-32 placeholder-slate-400 focus:outline-none"
                 />
                 {analyzing && <RefreshCw size={11} className="text-violet-400 animate-spin shrink-0" />}
               </div>
