@@ -83,7 +83,7 @@ export async function fetchLeadById(id: string) {
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .eq("id", id)
-    .eq("clinic_slug", _clinicSlug)
+    .or(`clinic_slug.eq.${_clinicSlug},clinic_slug.is.null`)
     .maybeSingle();
   if (error || !data) return null;
   return { ...data, stage: STAGE_MAP[data.stage] ?? data.stage };
@@ -94,7 +94,7 @@ export async function fetchLeads(search = "", includeResolvido = false) {
   let q = supabase
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
-    .eq("clinic_slug", _clinicSlug)
+    .or(`clinic_slug.eq.${_clinicSlug},clinic_slug.is.null`)
     .order("updated_at", { ascending: false })
     .limit(400);
   // Sem pesquisa: exclui resolvido do Kanban para reduzir payload (~30% menos linhas)
