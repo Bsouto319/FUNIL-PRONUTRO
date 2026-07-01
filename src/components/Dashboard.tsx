@@ -46,7 +46,10 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
   const [filterHoje, setFilterHoje]       = useState(false);
-  const [dayFilter, setDayFilter]         = useState<string | null>(null);
+  const [dayFilter, setDayFilter]         = useState<string | null>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  });
   const [muted, setMuted]                 = useState(() => localStorage.getItem('pn_sound_muted') === 'true');
   const [showPriorityQueue, setShowPriorityQueue] = useState(false);
   const [showFollowUp, setShowFollowUp]           = useState(false);
