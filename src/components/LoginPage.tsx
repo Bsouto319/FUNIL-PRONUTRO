@@ -23,19 +23,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center" style={{ background: "linear-gradient(160deg,#0a1628 0%,#0f2057 100%)" }}>
+    <div className="h-screen flex items-center justify-center" style={{ background: "linear-gradient(160deg, #f0f9ff 0%, #e8f4fd 40%, #f1f5f9 100%)" }}>
       <div className="w-full max-w-sm mx-4">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
             <span className="text-white font-black text-2xl">P</span>
           </div>
-          <h1 className="text-white font-black text-2xl">ProNutro CRM</h1>
-          <p className="text-blue-200/50 text-sm mt-1">Acesso restrito a funcionários</p>
+          <h1 className="text-slate-800 font-black text-2xl">Atendent AI — CRM</h1>
+          <p className="text-slate-500 text-sm mt-1">Acesso restrito a funcionários</p>
         </div>
 
         <form onSubmit={handleSubmit} autoComplete="on" className="space-y-4">
           <div>
-            <label className="block text-blue-200/60 text-xs font-bold mb-1.5 uppercase tracking-wide">Email</label>
+            <label className="block text-slate-600 text-xs font-bold mb-1.5 uppercase tracking-wide">Email</label>
             <input
               type="email"
               name="email"
@@ -43,12 +43,12 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition text-sm"
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition text-sm shadow-sm"
               placeholder="seu@email.com"
             />
           </div>
           <div>
-            <label className="block text-blue-200/60 text-xs font-bold mb-1.5 uppercase tracking-wide">Senha</label>
+            <label className="block text-slate-600 text-xs font-bold mb-1.5 uppercase tracking-wide">Senha</label>
             <input
               type="password"
               name="password"
@@ -56,7 +56,7 @@ export default function LoginPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition text-sm"
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition text-sm shadow-sm"
               placeholder="••••••••"
             />
           </div>

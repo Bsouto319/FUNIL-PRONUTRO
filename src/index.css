@@ -1,18 +1,19 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
-/* Força fundo escuro nos dropdowns nativos em todos os browsers/Windows */
+/* Dropdowns no tema claro */
 select {
-  color-scheme: dark;
-  background-color: #0f1a3e;
-  color: white;
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
 }
 
 select option {
-  background-color: #0f1a3e;
-  color: white;
+  background-color: #ffffff;
+  color: #1e293b;
 }
 
 select option:hover,
 select option:checked {
-  background-color: #1e3a7a;
+  background-color: #e0f2fe;
 }

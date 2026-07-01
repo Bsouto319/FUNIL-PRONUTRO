@@ -47,7 +47,7 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
   }
 
   return (
-    <div className="h-full flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="h-full flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-slate-200/50 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
       {KANBAN_STAGES.map(({ key, label, headerBg }) => {
         const stageLeads = leads
           .filter(l => l.stage === key)
@@ -76,8 +76,8 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
 
             {/* Cards */}
             <div
-              className="flex-1 overflow-y-auto space-y-2 p-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full"
-              style={{ background: "rgba(10,20,55,0.5)" }}
+              className="flex-1 overflow-y-auto space-y-2 p-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full"
+              style={{ background: "rgba(241,245,249,0.7)" }}
             >
               {stageLeads.map(lead => (
                 <LeadCard
@@ -119,15 +119,15 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
 
   // Card visual state
   const cardBg    = semAtend
-    ? "rgba(220,30,30,0.08)"
+    ? "rgba(254,226,226,0.95)"
     : mariaAtiva
-    ? "rgba(109,40,217,0.08)"
-    : "rgba(15,28,60,0.85)";
+    ? "rgba(237,233,254,0.95)"
+    : "rgba(255,255,255,0.95)";
   const borderClr = semAtend
     ? "rgba(239,68,68,0.35)"
     : mariaAtiva
     ? "rgba(167,139,250,0.35)"
-    : "rgba(255,255,255,0.08)";
+    : "rgba(148,163,184,0.3)";
   const leftClr   = semAtend ? "#ef4444" : mariaAtiva ? "#a78bfa" : stageColor;
 
   return (
@@ -154,7 +154,7 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
             >
               {name[0]?.toUpperCase() || "?"}
             </div>
-            <p className="text-xs font-black text-white truncate leading-tight">{name}</p>
+            <p className="text-xs font-black text-slate-800 truncate leading-tight">{name}</p>
           </div>
 
           {/* Badges */}
@@ -179,9 +179,9 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
 
         {/* Phone + prontuário + last sender */}
         <div className="flex items-center gap-1.5 mb-0.5">
-          <p className="text-[9px] text-white/30 font-mono truncate min-w-0">+{lead.phone}</p>
+          <p className="text-[9px] text-slate-400 font-mono truncate min-w-0">+{lead.phone}</p>
           {lead.numero_prontuario && (
-            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/40 shrink-0">
+            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-slate-200 text-slate-500 shrink-0">
               #{String(lead.numero_prontuario).padStart(3, "0")}
             </span>
           )}
@@ -205,7 +205,7 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
             {lead.summary}
           </p>
         ) : lead.first_message ? (
-          <p className="text-[9px] text-white/30 line-clamp-1 mb-0.5">{lead.first_message}</p>
+          <p className="text-[9px] text-slate-400 line-clamp-1 mb-0.5">{lead.first_message}</p>
         ) : null}
 
         {/* Bottom row: Maria toggle | time | score */}
@@ -217,20 +217,20 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
               title={lead.ai_mode ? "Maria ativa — clique para desligar" : "Maria desligada — clique para ligar"}
               className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black border transition-all ${
                 lead.ai_mode
-                  ? "bg-violet-500/25 text-violet-300 border-violet-500/50 shadow-sm shadow-violet-500/20"
-                  : "bg-white/10 text-white/50 border-white/25"
+                  ? "bg-violet-500/25 text-violet-600 border-violet-500/50 shadow-sm shadow-violet-500/20"
+                  : "bg-slate-100 text-slate-400 border-slate-200"
               }`}
             >
               <Bot size={9} />
               <span>{lead.ai_mode ? "ON" : "OFF"}</span>
             </button>
           ) : (
-            <span className="text-[9px] text-white/20 font-bold px-1">—</span>
+            <span className="text-[9px] text-slate-300 font-bold px-1">—</span>
           )}
 
           <div className="flex items-center gap-1.5">
             {/* Time */}
-            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${semAtend ? "text-red-300 bg-red-500/15" : "text-white/50 bg-white/5"}`}>
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${semAtend ? "text-red-600 bg-red-100" : "text-slate-400 bg-slate-100"}`}>
               {semAtend ? "⚠ " : ""}{formatTime(lastMsg)}
             </span>
 

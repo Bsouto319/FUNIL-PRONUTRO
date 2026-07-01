@@ -1,7 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAudit } from "../_shared/audit.ts";
 
-const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://free.uazapi.com";
-const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "d50a4fec-a46e-401c-9c65-580c8b8619b8";
+const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://btechsoutoshop.uazapi.com";
+const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "5efd90a1-116b-4c86-b715-7bac2fab658a";
 const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
@@ -69,11 +70,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    await logAudit({
+      action: "MEDIA_SENT",
+      table_name: "pn_mensagens",
+      record_id: lead_id ?? undefined,
+      user_phone: phone,
+      severity: "info",
+      metadata: { media_type, file_name, sender: sender_nome },
+    });
+
     return new Response(JSON.stringify({ ok: true }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (e) {
     console.error("pn-send-media error", e);
+    await logAudit({ action: "MEDIA_SEND_ERROR", severity: "error", metadata: { error: String(e) } });
     return new Response(JSON.stringify({ ok: false, error: String(e) }), {
       status: 500, headers: { "Content-Type": "application/json", ...CORS },
     });

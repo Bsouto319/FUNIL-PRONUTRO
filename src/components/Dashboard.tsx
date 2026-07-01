@@ -13,12 +13,14 @@ import PacientesPage from "./PacientesPage";
 import PacientePresencialModal from "./PacientePresencialModal";
 import EstoquePage from "./EstoquePage";
 import TeamChat from "./TeamChat";
-import { fetchLeads, fetchLeadById, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage } from "../lib/api";
+import { fetchLeads, fetchLeadById, fetchStats, fetchMariaGlobalMode, setMariaGlobalMode, updateLeadAiMode, signOut, createLead, STAGES, fetchLatestInsight, fetchBancos, sendMessage, getClinicSlug } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Page = "kanban" | "agenda" | "pacientes" | "pendencias" | "financeiro" | "relatorio" | "prontuario" | "estoque" | "admin" | "followup";
 
-export default function Dashboard({ user }: { user: any }) {
+export default function Dashboard({ user, clinicConfig }: { user: any; clinicConfig?: any }) {
+  const clinicName = clinicConfig?.clinic_name || "CRM";
+  const agentName  = clinicConfig?.agent_name  || "Maria";
   const [leads, setLeads]         = useState<any[]>([]);
   const [stats, setStats]         = useState({ hoje: 0, maria: 0, agendados: 0, total: 0 });
   const [search, setSearch]       = useState("");
@@ -117,20 +119,36 @@ export default function Dashboard({ user }: { user: any }) {
     } catch {}
   }
 
-  const load = useCallback(async (q?: string) => {
+  const load = useCallback(async (q?: string, attempt = 1) => {
     try {
       const query = q !== undefined ? q : searchRef.current;
-      const [l, s] = await Promise.all([fetchLeads(query), fetchStats()]);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 15000)
+      );
+      const [l, s] = await Promise.race([
+        Promise.all([fetchLeads(query), fetchStats()]),
+        timeout,
+      ]);
       const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
+      if (unique.length === 0 && attempt === 1) {
+        // Retry automático se vier vazio na primeira tentativa (possível timeout Supabase)
+        setTimeout(() => load(q, 2), 3000);
+        return;
+      }
       setLeads(unique);
       setStats(s);
     } catch (err) {
-      console.error("load error", err);
+      console.error("load error (attempt", attempt, ")", err);
+      if (attempt === 1) {
+        // Retry após 3s na primeira falha
+        setTimeout(() => load(q, 2), 3000);
+        return;
+      }
+      // Em erro na 2ª tentativa: mantém o que está na tela
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-    // Bancos em background — não bloqueia o Kanban
     fetchBancos().then(setBancos).catch(() => {});
   }, []);
 
@@ -173,25 +191,33 @@ export default function Dashboard({ user }: { user: any }) {
   }, []);
 
   useEffect(() => {
+    const slug = getClinicSlug();
     const leadsChannel = supabase
       .channel("pn_leads_rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_leads" }, async (payload) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_leads", filter: `clinic_slug=eq.${slug}` }, (payload) => {
         playNewLeadSound();
         if (pageRef.current !== "kanban") setNewLeadAlert(true);
         const newLead = payload.new as any;
-        if (newLead?.id) {
-          const updated = await fetchLeadById(newLead.id);
-          if (updated) setLeads(prev => [updated, ...prev.filter(l => l.id !== updated.id)]);
-        }
+        if (!newLead?.id) return;
+        // Insere imediatamente com os dados do payload (sem esperar round-trip)
+        const optimistic = { ...newLead, stage: (STAGES as any)[newLead.stage] ? newLead.stage : (newLead.stage || "em_atendimento") };
+        setLeads(prev => [optimistic, ...prev.filter(l => l.id !== newLead.id)]);
+        // Corrige com dados joined em background (responsavel, etc.)
+        fetchLeadById(newLead.id).then(full => {
+          if (full) setLeads(prev => prev.map(l => l.id === full.id ? full : l));
+        });
       })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pn_leads" }, async (payload) => {
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pn_leads", filter: `clinic_slug=eq.${slug}` }, (payload) => {
         const changedLead = payload.new as any;
-        if (changedLead?.id) {
-          const updated = await fetchLeadById(changedLead.id);
-          if (updated) setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
-        }
+        if (!changedLead?.id) return;
+        // Atualiza imediatamente mesclando payload com dados joined existentes
+        setLeads(prev => prev.map(l => l.id === changedLead.id ? { ...l, ...changedLead } : l));
+        // Corrige com dados completos em background
+        fetchLeadById(changedLead.id).then(full => {
+          if (full) setLeads(prev => prev.map(l => l.id === full.id ? full : l));
+        });
       })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pn_leads" }, (payload) => {
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pn_leads", filter: `clinic_slug=eq.${slug}` }, (payload) => {
         const deleted = payload.old as any;
         if (deleted?.id) setLeads(prev => prev.filter(l => l.id !== deleted.id));
       })
@@ -199,25 +225,33 @@ export default function Dashboard({ user }: { user: any }) {
 
     const msgChannel = supabase
       .channel("pn_mensagens_rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens" }, async (payload) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pn_mensagens", filter: `clinic_slug=eq.${slug}` }, (payload) => {
         const msg = payload.new as any;
         if (msg?.direction === "in") {
           playNewMessageSound();
           if (pageRef.current !== "kanban") setNewMsgAlert(true);
         }
-        // Atualiza apenas o lead afetado — sem re-fetch de todos
-        if (msg?.lead_id) {
-          const updated = await fetchLeadById(msg.lead_id);
-          if (updated) setLeads(prev => {
-            const exists = prev.some(l => l.id === updated.id);
-            if (exists) return prev.map(l => l.id === updated.id ? updated : l);
-            return [updated, ...prev];
-          });
+        if (!msg?.lead_id) return;
+        // Atualiza ultima_mensagem do lead imediatamente sem esperar round-trip
+        if (msg.body) {
+          setLeads(prev => prev.map(l => l.id === msg.lead_id
+            ? { ...l, last_message_at: msg.created_at ?? new Date().toISOString() }
+            : l
+          ));
         }
+        // Busca lead completo em background para sincronizar todos os campos
+        fetchLeadById(msg.lead_id).then(full => {
+          if (!full) return;
+          setLeads(prev => {
+            const exists = prev.some(l => l.id === full.id);
+            if (exists) return prev.map(l => l.id === full.id ? full : l);
+            return [full, ...prev];
+          });
+        });
       })
       .subscribe();
 
-    // Polling de fallback — cobre quando o Realtime cai (3s = menos janela cega)
+    // Polling de fallback — Realtime é o primário, polling cobre quedas de conexão
     const interval = setInterval(() => load(), 3000);
 
     // Ao voltar pra aba: força reload imediato + reconecta canais
@@ -354,7 +388,7 @@ export default function Dashboard({ user }: { user: any }) {
   const FOLLOWUP_TEMPLATES = [
     (nome: string) => `Oi ${nome}! 😊 Tudo bem? Ainda tem interesse em agendar sua consulta de nutrição?`,
     (nome: string) => `Olá ${nome}! Passando para saber se ainda posso te ajudar com alguma informação sobre a consulta. 🌿`,
-    (nome: string) => `Oi ${nome}! A clínica ProNutro aqui. Você ainda está interessado(a) em agendar? Temos horários disponíveis esta semana! 📅`,
+    (nome: string) => `Oi ${nome}! A ${clinicName} aqui. Você ainda está interessado(a) em agendar? Temos horários disponíveis esta semana! 📅`,
   ];
   const followUpLeads = leads
     .filter(l => {
@@ -456,7 +490,7 @@ export default function Dashboard({ user }: { user: any }) {
 
   const statCards = [
     { label: "Leads Hoje",  value: stats.hoje,      icon: Users,    gradient: "from-sky-500 to-blue-600",       glow: "shadow-sky-500/30"     },
-    { label: "Maria IA",    value: mariaActive ? stats.maria : 0, icon: Bot, gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/30" },
+    { label: `${agentName} IA`, value: mariaActive ? stats.maria : 0, icon: Bot, gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/30" },
     { label: "Agendados",   value: stats.agendados, icon: Calendar, gradient: "from-emerald-500 to-teal-600",   glow: "shadow-emerald-500/30" },
     { label: "Total",       value: stats.total,     icon: BarChart3, gradient: "from-amber-500 to-orange-500", glow: "shadow-amber-500/30"   },
   ];
@@ -474,16 +508,17 @@ export default function Dashboard({ user }: { user: any }) {
     ? leads.filter(l => new Date(l.created_at) >= brasiliaToday)
     : leads;
 
-  const firstName = (user.nome || "").split(" ")[0];
+  const displayName = (user.nome || "").includes("@") ? (user.nome as string).split("@")[0] : (user.nome || "Usuário");
+  const firstName = displayName.split(" ")[0];
   const brHour    = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
   const saudacao  = brHour < 12 ? "Bom dia" : brHour < 18 ? "Boa tarde" : "Boa noite";
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: "linear-gradient(160deg, #0e1f4a 0%, #162d6b 40%, #0f2057 100%)" }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: "linear-gradient(160deg, #f0f9ff 0%, #e8f4fd 40%, #f1f5f9 100%)" }}>
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-white/10" style={{ background: "rgba(10,20,60,0.7)", backdropFilter: "blur(12px)" }}>
-        <div className="px-4 sm:px-6 py-3 flex items-center gap-3">
+      <header className="flex-shrink-0 border-b border-slate-200" style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
+        <div className="px-4 sm:px-6 py-2 flex items-center gap-3">
 
           {/* Logo */}
           <div className="flex items-center gap-2.5 shrink-0">
@@ -494,15 +529,15 @@ export default function Dashboard({ user }: { user: any }) {
               style={{ boxShadow: "0 0 16px 2px rgba(180,120,80,0.35)" }}
             />
             <div>
-              <p className="text-white font-black text-lg leading-none tracking-tight">ProNutro</p>
-              <p className="text-blue-200/50 text-[10px] font-bold tracking-wide">CRM CLÍNICA</p>
+              <p className="text-slate-800 font-black text-lg leading-none tracking-tight">{clinicName}</p>
+              <p className="text-sky-500 text-[10px] font-bold tracking-wide">CRM CLÍNICA</p>
             </div>
           </div>
 
           {/* User badge + saudação */}
           <div className="hidden sm:flex items-center gap-2 ml-2 px-3 py-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10">
             <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center">
-              <span className="text-white font-black text-[10px]">{(user.nome || "U")[0].toUpperCase()}</span>
+              <span className="text-white font-black text-[10px]">{(displayName[0] || "U").toUpperCase()}</span>
             </div>
             <div className="leading-tight">
               <p className="text-emerald-300 font-black text-xs leading-none">{saudacao}, {firstName}! 👋</p>
@@ -522,7 +557,7 @@ export default function Dashboard({ user }: { user: any }) {
                   key={p}
                   onClick={() => { setPage(p); if (isKanban) { setNewLeadAlert(false); setNewMsgAlert(false); } }}
                   className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    page === p ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    page === p ? "bg-sky-100 text-sky-700" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   {p === "kanban" ? "Kanban" : p === "agenda" ? "Agenda" : "👥 Pacientes"}
@@ -544,8 +579,8 @@ export default function Dashboard({ user }: { user: any }) {
                 onClick={() => setShowMoreMenu(m => !m)}
                 className={`relative flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   ["pendencias","financeiro","relatorio","followup","prontuario","estoque","admin"].includes(page)
-                    ? "bg-white/15 text-white"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-sky-100 text-sky-700"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 {["pendencias","financeiro","relatorio","followup","prontuario","estoque","admin"].includes(page)
@@ -561,7 +596,7 @@ export default function Dashboard({ user }: { user: any }) {
               </button>
 
               {showMoreMenu && (
-                <div className="absolute top-full left-0 mt-1 z-50 bg-gray-900/95 border border-white/15 rounded-xl shadow-2xl py-1.5 min-w-[160px]" style={{ backdropFilter: "blur(12px)" }}>
+                <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
                   {([
                     { key: "pendencias", label: "💰 Pendências" },
                     { key: "financeiro", label: "Financeiro" },
@@ -577,7 +612,7 @@ export default function Dashboard({ user }: { user: any }) {
                         key={key}
                         onClick={() => { setPage(key); setShowMoreMenu(false); }}
                         className={`w-full text-left flex items-center justify-between px-4 py-2 text-sm transition ${
-                          page === key ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"
+                          page === key ? "text-sky-700 bg-sky-50" : "text-slate-600 hover:text-slate-800 hover:bg-slate-50"
                         }`}
                       >
                         {label}
@@ -596,12 +631,12 @@ export default function Dashboard({ user }: { user: any }) {
           {page === "kanban" && (
             <div className="flex items-center gap-2 ml-2">
               <div className="relative max-w-xs w-full hidden sm:block">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   value={search}
                   onChange={handleSearch}
                   placeholder="Buscar paciente..."
-                  className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 transition"
                 />
               </div>
               <button
@@ -610,7 +645,7 @@ export default function Dashboard({ user }: { user: any }) {
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
                   filterHoje
                     ? "bg-sky-600 text-white border-sky-500/50 shadow-lg shadow-sky-500/20"
-                    : "bg-white/5 text-white/40 border-white/10 hover:text-white/70"
+                    : "bg-slate-100 text-slate-500 border-slate-200 hover:text-slate-700"
                 }`}
               >
                 <Filter size={11} />
@@ -624,30 +659,12 @@ export default function Dashboard({ user }: { user: any }) {
 
           {/* Actions */}
           <div className="ml-auto flex items-center gap-2">
-            {/* Organizar Kanban com IA */}
-            {page === "kanban" && (
-              <button
-                onClick={handleOrganize}
-                disabled={organizeModal?.open && !organizeModal?.done}
-                title="Analisa todas as conversas e move cada lead para o stage correto automaticamente"
-                className={`flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border transition ${
-                  organizeModal?.open && !organizeModal?.done
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300 cursor-wait"
-                    : "bg-violet-600/20 hover:bg-violet-600/40 border-violet-500/30 text-violet-300"
-                }`}
-              >
-                <Brain size={13} className={organizeModal?.open && !organizeModal?.done ? "animate-pulse" : ""} />
-                <span className="hidden sm:inline">
-                  {organizeModal?.open && !organizeModal?.done ? "Organizando..." : "🎯 Organizar IA"}
-                </span>
-              </button>
-            )}
             {/* Fila de Prioridades */}
             {page === "kanban" && (
               <button
                 onClick={() => setShowPriorityQueue(true)}
                 title="Fila de prioridades — quem atender primeiro"
-                className="relative flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-amber-500/15 hover:bg-amber-500/30 border-amber-500/30 text-amber-300 transition"
+                className="relative flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-700 transition"
               >
                 <span className="text-sm leading-none">📋</span>
                 <span className="hidden sm:inline">Prioridades</span>
@@ -662,7 +679,7 @@ export default function Dashboard({ user }: { user: any }) {
             {(page === "kanban" || page === "agenda") && (
               <button
                 onClick={() => setShowPresencial(true)}
-                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-emerald-600/20 hover:bg-emerald-600/40 border-emerald-500/30 text-emerald-300 transition"
+                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-700 transition"
                 title="Adicionar paciente presencial — cadastro + consulta + pagamento"
               >
                 <UserPlus size={13} />
@@ -672,7 +689,7 @@ export default function Dashboard({ user }: { user: any }) {
             {(page === "kanban" || page === "agenda") && (
               <button
                 onClick={() => setShowOutbound(true)}
-                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-sky-600/20 hover:bg-sky-600/40 border-sky-500/30 text-sky-300 transition"
+                className="flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-700 transition"
                 title="Iniciar conversa ativa com paciente pelo WhatsApp"
               >
                 <span className="text-[13px]">💬</span>
@@ -688,7 +705,7 @@ export default function Dashboard({ user }: { user: any }) {
               className={`flex items-center gap-1.5 font-black px-3 py-2 rounded-xl text-xs border transition-all shadow-lg ${
                 mariaActive
                   ? "bg-violet-600 hover:bg-violet-700 border-violet-500/50 text-white shadow-violet-500/30"
-                  : "bg-white/5 hover:bg-white/10 border-white/15 text-white/50"
+                  : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-500"
               } ${mariaLoading ? "opacity-60 cursor-wait" : ""}`}
             >
               <span className="text-sm leading-none">🤖</span>
@@ -698,27 +715,27 @@ export default function Dashboard({ user }: { user: any }) {
             <button
               onClick={() => setMuted(m => { const next = !m; localStorage.setItem('pn_sound_muted', next ? 'true' : 'false'); return next; })}
               title={muted ? 'Som desligado — clique para ligar' : 'Som ligado — clique para desligar'}
-              className={`p-2 rounded-xl border transition ${muted ? 'bg-red-500/15 border-red-500/30 text-red-400' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/50'}`}
+              className={`p-2 rounded-xl border transition ${muted ? 'bg-red-500/15 border-red-500/30 text-red-500' : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-500'}`}
             >
               {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
 
             <button
               onClick={() => { setRefreshing(true); load(); }}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 transition"
               title="Atualizar"
             >
-              <RefreshCw size={14} className={`text-white/60 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw size={14} className={`text-slate-500 ${refreshing ? "animate-spin" : ""}`} />
             </button>
 
             {/* Sino de notificações */}
             <div className="relative">
               <button
                 onClick={() => setShowNotifPanel(s => !s)}
-                className={`relative p-2 rounded-xl border transition ${showNotifPanel ? "bg-violet-600/30 border-violet-500/40" : "bg-white/5 hover:bg-white/10 border-white/10"}`}
+                className={`relative p-2 rounded-xl border transition ${showNotifPanel ? "bg-violet-600/30 border-violet-500/40" : "bg-slate-100 hover:bg-slate-200 border-slate-200"}`}
                 title="Notificações da IA"
               >
-                <Bell size={14} className={notifications.some(n => !n.read) ? "text-violet-300" : "text-white/50"} />
+                <Bell size={14} className={notifications.some(n => !n.read) ? "text-violet-500" : "text-slate-500"} />
                 {notifications.some(n => !n.read) && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-violet-500 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-lg shadow-violet-500/40">
                     {notifications.filter(n => !n.read).length > 9 ? "9+" : notifications.filter(n => !n.read).length}
@@ -771,96 +788,70 @@ export default function Dashboard({ user }: { user: any }) {
 
             <button
               onClick={() => signOut()}
-              className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 transition"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-rose-500/20 border border-slate-200 hover:border-rose-500/30 transition"
               title="Sair"
             >
-              <LogOut size={14} className="text-white/50 hover:text-rose-400" />
+              <LogOut size={14} className="text-slate-500 hover:text-rose-500" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Stats */}
-      {page === "kanban" && (
-        <div className="flex-shrink-0 px-4 sm:px-6 py-1.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {statCards.map(({ label, value, icon: Icon, gradient, glow }) => (
-            <div key={label} className="border border-white/10 rounded-lg p-2 flex items-center gap-2 hover:bg-white/[0.06] transition" style={{ background: "rgba(255,255,255,0.05)" }}>
-              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg ${glow} flex-shrink-0`}>
-                <Icon size={14} className="text-white" />
-              </div>
-              <div>
-                <p className="text-xl font-black text-white leading-none">{loading ? "–" : value}</p>
-                <p className="text-blue-200/60 text-[10px] font-black tracking-widest uppercase mt-0.5">{label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Briefing Matinal — sempre visível no kanban */}
+      {/* Barra de status compacta — stats + briefing em uma única linha */}
       {page === "kanban" && !loading && (
-        <div className="flex-shrink-0 px-4 sm:px-6 pb-1">
-          <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
-            {/* Linha superior: resumo rápido */}
-            <div className="px-3 py-1.5 flex items-center gap-3 flex-wrap border-b border-white/8">
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Brain size={12} className="text-violet-400" />
-                <span className="text-violet-300 text-[10px] font-black uppercase tracking-wider">Briefing IA</span>
-              </div>
-              <div className="w-px h-3 bg-white/15 shrink-0" />
-              {/* Urgentes */}
-              {priorityQueue.filter(l => l.urgency === "alta").length > 0 ? (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] font-black text-red-300">
-                    🔴 {priorityQueue.filter(l => l.urgency === "alta").length} urgente{priorityQueue.filter(l => l.urgency === "alta").length !== 1 ? "s" : ""}
-                  </span>
-                  <span className="text-white/25 text-[10px]">
-                    — {priorityQueue.filter(l => l.urgency === "alta").slice(0, 2).map(l => l.nomeLead.split(" ")[0]).join(", ")}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-emerald-300 text-[10px] font-black">✅ Sem urgências</span>
-              )}
-              <div className="w-px h-3 bg-white/15 shrink-0" />
-              {/* Leads quentes */}
-              {priorityQueue.filter(l => l.stage === "interesse_real").length > 0 && (
-                <>
-                  <div className="w-px h-3 bg-white/15 shrink-0" />
-                  <span className="text-amber-300 text-[10px] font-black shrink-0">
-                    🔥 {priorityQueue.filter(l => l.stage === "interesse_real").length} lead{priorityQueue.filter(l => l.stage === "interesse_real").length !== 1 ? "s" : ""} quente{priorityQueue.filter(l => l.stage === "interesse_real").length !== 1 ? "s" : ""}
-                  </span>
-                </>
-              )}
-              <button onClick={() => setShowPriorityQueue(true)}
-                className="ml-auto shrink-0 text-[10px] font-black text-amber-400 hover:text-amber-300 transition underline underline-offset-2">
-                Ver fila →
-              </button>
+        <div className="flex-shrink-0 px-4 sm:px-6 py-1 border-b border-slate-200" style={{ background: "rgba(255,255,255,0.7)" }}>
+          <div className="flex items-center gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden min-h-[28px]">
+            {/* Stats inline */}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-[11px] text-slate-500"><span className="font-black text-sky-600">{stats.hoje}</span> <span className="text-slate-400">hoje</span></span>
+              <span className="text-slate-300 text-[10px]">·</span>
+              <span className="text-[11px] text-slate-500"><span className="font-black text-violet-600">{mariaActive ? stats.maria : 0}</span> <span className="text-slate-400">IA</span></span>
+              <span className="text-slate-300 text-[10px]">·</span>
+              <span className="text-[11px] text-slate-500"><span className="font-black text-emerald-600">{stats.agendados}</span> <span className="text-slate-400">agendados</span></span>
+              <span className="text-slate-300 text-[10px]">·</span>
+              <span className="text-[11px] text-slate-500"><span className="font-black text-amber-600">{stats.total}</span> <span className="text-slate-400">total</span></span>
             </div>
-            {/* Linha inferior: briefing GPT se existir */}
+
+            <div className="w-px h-3 bg-slate-300 shrink-0" />
+
+            {/* Urgências */}
+            {priorityQueue.filter(l => l.urgency === "alta").length > 0 ? (
+              <button onClick={() => setShowPriorityQueue(true)}
+                className="flex items-center gap-1.5 shrink-0 hover:opacity-80 transition">
+                <span className="text-[10px] font-black text-red-300">
+                  🔴 {priorityQueue.filter(l => l.urgency === "alta").length} urgente{priorityQueue.filter(l => l.urgency === "alta").length !== 1 ? "s" : ""}
+                </span>
+                <span className="text-slate-400 text-[10px] hidden sm:inline">
+                  — {priorityQueue.filter(l => l.urgency === "alta").slice(0, 2).map(l => l.nomeLead.split(" ")[0]).join(", ")}
+                </span>
+              </button>
+            ) : (
+              <span className="text-emerald-400 text-[10px] font-black shrink-0">✅ ok</span>
+            )}
+
+            {/* Briefing GPT — truncado, clicável para relatório */}
             {briefing && (
-              <div className="px-3 py-1 flex items-center gap-3 flex-wrap">
+              <>
+                <div className="w-px h-3 bg-slate-300 shrink-0" />
                 {briefing.score_saude != null && (
-                  <>
-                    <span className={`text-[10px] font-black ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>
-                      {briefing.score_saude}pts
-                    </span>
-                    <div className="w-px h-3 bg-white/15 shrink-0" />
-                  </>
+                  <span className={`text-[10px] font-black shrink-0 ${briefing.score_saude >= 70 ? "text-emerald-400" : briefing.score_saude >= 45 ? "text-amber-400" : "text-rose-400"}`}>
+                    {briefing.score_saude}pts
+                  </span>
                 )}
-                <p className="text-white/45 text-[10px] leading-relaxed flex-1 min-w-0 truncate">{briefing.briefing}</p>
+                <p className="text-slate-400 text-[10px] truncate min-w-0 max-w-[260px] hidden md:block">{briefing.briefing}</p>
                 {briefing.metricas?.totalOportunidadePerdida > 0 && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <TrendingDown size={10} className="text-rose-400" />
+                    <TrendingDown size={9} className="text-rose-400" />
                     <span className="text-rose-300 text-[10px] font-black">
                       -{briefing.metricas.totalOportunidadePerdida.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
                     </span>
                   </div>
                 )}
                 <button onClick={() => setPage("relatorio")}
-                  className="shrink-0 text-[10px] font-black text-violet-400 hover:text-violet-300 transition underline underline-offset-2">
-                  Relatório →
+                  className="shrink-0 text-[10px] font-black text-violet-400 hover:text-violet-300 transition">
+                  Rel. →
                 </button>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -870,12 +861,12 @@ export default function Dashboard({ user }: { user: any }) {
       <main className="flex-1 overflow-hidden min-h-0">
         {page === "kanban" && (
           loading ? (
-            <div className="flex items-center justify-center h-full text-white/30 text-sm">Carregando leads...</div>
+            <div className="flex items-center justify-center h-full text-slate-400 text-sm">Carregando leads...</div>
           ) : (
             <div className="h-full flex flex-col px-4 sm:px-6 pb-6 gap-2">
               {/* Day filter bar */}
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                <CalendarDays size={13} className="text-white/30" />
+                <CalendarDays size={13} className="text-slate-400" />
                 {[
                   { label: "Todos", value: null },
                   { label: "Hoje", value: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })() },
@@ -887,7 +878,7 @@ export default function Dashboard({ user }: { user: any }) {
                     className={`text-[11px] font-black px-3 py-1 rounded-lg border transition-all ${
                       dayFilter === opt.value
                         ? "bg-emerald-600/80 text-white border-emerald-500/60 shadow shadow-emerald-500/20"
-                        : "bg-white/5 text-white/45 border-white/10 hover:text-white/70 hover:bg-white/10"
+                        : "bg-white text-slate-500 border-slate-200 hover:text-slate-700 hover:bg-slate-50"
                     }`}
                   >
                     {opt.label}
@@ -909,7 +900,7 @@ export default function Dashboard({ user }: { user: any }) {
                   type="date"
                   value={dayFilter ?? ""}
                   onChange={e => setDayFilter(e.target.value || null)}
-                  className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-white/5 text-white/50 border-white/10 focus:outline-none focus:border-emerald-500/50 focus:text-white transition"
+                  className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-white text-slate-500 border-slate-200 focus:outline-none focus:border-emerald-500/50 focus:text-slate-800 transition"
                 />
                 {dayFilter && (
                   <button
