@@ -60,7 +60,6 @@ export default function PacientesPage({ leads, onSelect }: Props) {
     });
   }, [leads, search, sortMode]);
 
-  // Group by first letter when alphabetical and no search
   const grouped = useMemo(() => {
     if (sortMode !== "alpha" || search.trim()) return null;
     const map = new Map<string, any[]>();
@@ -77,26 +76,26 @@ export default function PacientesPage({ leads, onSelect }: Props) {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-white/8" style={{ background: "rgba(10,20,55,0.5)" }}>
+      <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="shrink-0">
-            <h2 className="text-white font-black text-lg leading-none">Pacientes</h2>
-            <p className="text-white/30 text-xs mt-0.5">{leads.length} cadastrados</p>
+            <h2 className="text-slate-800 font-black text-lg leading-none">Pacientes</h2>
+            <p className="text-slate-400 text-xs mt-0.5">{leads.length} cadastrados</p>
           </div>
 
           {/* Busca */}
           <div className="flex-1 min-w-[200px] max-w-lg relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Nome, telefone, CPF, e-mail ou #prontuário..."
-              className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition"
+              className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 transition"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
               >
                 <X size={14} />
               </button>
@@ -106,7 +105,7 @@ export default function PacientesPage({ leads, onSelect }: Props) {
           {/* Sort toggle */}
           <button
             onClick={() => setSortMode(m => m === "alpha" ? "recent" : "alpha")}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs font-bold transition shrink-0"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 text-xs font-bold transition shrink-0"
             title={sortMode === "alpha" ? "Ordenado: A-Z" : "Ordenado: Recentes"}
           >
             {sortMode === "alpha" ? <ArrowDownAZ size={14} /> : <ArrowDownWideNarrow size={14} />}
@@ -114,7 +113,7 @@ export default function PacientesPage({ leads, onSelect }: Props) {
           </button>
 
           {search && (
-            <p className="text-white/40 text-sm shrink-0 ml-1">
+            <p className="text-slate-500 text-sm shrink-0 ml-1">
               {patients.length} resultado{patients.length !== 1 ? "s" : ""}
             </p>
           )}
@@ -122,19 +121,18 @@ export default function PacientesPage({ leads, onSelect }: Props) {
       </div>
 
       {/* Lista */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 overflow-y-auto px-4 py-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
         {patients.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-white/20">
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
             <UserCircle2 size={48} strokeWidth={1} />
             <p className="text-sm font-bold">{search ? "Nenhum paciente encontrado" : "Nenhum paciente cadastrado"}</p>
           </div>
         ) : grouped ? (
-          // Agrupado por letra (modo alfabético sem busca)
           <div className="space-y-4">
             {Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([letter, group]) => (
               <div key={letter}>
-                <div className="sticky top-0 z-10 py-1 mb-1" style={{ background: "rgba(10,20,55,0.95)" }}>
-                  <span className="text-[11px] font-black text-white/30 tracking-widest uppercase">{letter}</span>
+                <div className="sticky top-0 z-10 py-1 mb-1 bg-slate-50 border-b border-slate-100">
+                  <span className="text-[11px] font-black text-slate-400 tracking-widest uppercase">{letter}</span>
                 </div>
                 <div className="space-y-0.5">
                   {group.map(lead => <PatientRow key={lead.id} lead={lead} onSelect={onSelect} />)}
@@ -143,7 +141,6 @@ export default function PacientesPage({ leads, onSelect }: Props) {
             ))}
           </div>
         ) : (
-          // Lista simples (busca ou modo recentes)
           <div className="space-y-0.5">
             {patients.map(lead => <PatientRow key={lead.id} lead={lead} onSelect={onSelect} />)}
           </div>
@@ -162,7 +159,7 @@ function PatientRow({ lead, onSelect }: { lead: any; onSelect: (l: any) => void 
   return (
     <button
       onClick={() => onSelect(lead)}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-white/5 group"
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-slate-100 group"
     >
       {/* Avatar */}
       <div
@@ -174,16 +171,16 @@ function PatientRow({ lead, onSelect }: { lead: any; onSelect: (l: any) => void 
 
       {/* Info principal */}
       <div className="flex-1 min-w-0">
-        <p className="text-white font-bold text-sm truncate group-hover:text-emerald-200 transition leading-tight">
+        <p className="text-slate-800 font-bold text-sm truncate group-hover:text-sky-700 transition leading-tight">
           {name}
         </p>
         <div className="flex items-center gap-2 mt-0.5">
-          <Phone size={9} className="text-white/20 shrink-0" />
-          <span className="text-[10px] text-white/30 font-mono truncate">+{lead.phone}</span>
+          <Phone size={9} className="text-slate-400 shrink-0" />
+          <span className="text-[10px] text-slate-400 font-mono truncate">+{lead.phone}</span>
           {lead.cpf && (
             <>
-              <span className="text-white/15 text-[9px]">·</span>
-              <span className="text-[10px] text-white/25">
+              <span className="text-slate-300 text-[9px]">·</span>
+              <span className="text-[10px] text-slate-400">
                 {lead.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
               </span>
             </>
@@ -205,7 +202,7 @@ function PatientRow({ lead, onSelect }: { lead: any; onSelect: (l: any) => void 
             {stage.label}
           </span>
         )}
-        <div className="flex items-center gap-1 text-white/25 min-w-[36px] justify-end">
+        <div className="flex items-center gap-1 text-slate-400 min-w-[36px] justify-end">
           <Clock size={9} />
           <span className="text-[9px] whitespace-nowrap">{timeAgo(lastAt)}</span>
         </div>
