@@ -1,6 +1,21 @@
 ﻿import { supabase } from "./supabase";
 import { setCache, getCache } from "./cache";
 
+// ── Contexto de clínica (setado após login) ───────────────────────────────────
+let _clinicSlug = "pronutro";
+let _clinicName = "ProNutro CRM";
+let _agentName  = "Maria";
+
+export function setClinicContext(slug: string, name: string, agentName?: string) {
+  _clinicSlug = slug || "pronutro";
+  _clinicName = name || "CRM";
+  _agentName  = agentName || "Maria";
+}
+
+export function getClinicSlug() { return _clinicSlug; }
+export function getClinicName() { return _clinicName; }
+export function getAgentName()  { return _agentName; }
+
 // kanban: true = aparece como coluna no Kanban | false = só no seletor de stage
 export const STAGES = [
   { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: "#0284c7", kanban: true  },
@@ -68,17 +83,24 @@ export async function fetchLeadById(id: string) {
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
     .eq("id", id)
+    .eq("clinic_slug", _clinicSlug)
     .maybeSingle();
   if (error || !data) return null;
   return { ...data, stage: STAGE_MAP[data.stage] ?? data.stage };
 }
 
-export async function fetchLeads(search = "") {
+export async function fetchLeads(search = "", includeResolvido = false) {
   const cacheKey = `leads_${search}`;
   let q = supabase
     .from("pn_leads")
     .select("*, last_sender_nome, responsavel:pn_usuarios!assignee_id(id, nome, role)")
-    .order("created_at", { ascending: false });
+    .eq("clinic_slug", _clinicSlug)
+    .order("updated_at", { ascending: false })
+    .limit(400);
+  // Sem pesquisa: exclui resolvido do Kanban para reduzir payload (~30% menos linhas)
+  if (!search && !includeResolvido) {
+    q = q.neq("stage", "resolvido");
+  }
   if (search) {
     const stripped = search.trim();
     const numPart  = stripped.replace(/^#/, "");
@@ -102,10 +124,10 @@ export async function fetchLeads(search = "") {
 export async function fetchStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [todayRes, mariaRes, agendRes, totalRes] = await Promise.all([
-    supabase.from("pn_leads").select("id", { count: "exact" }).gte("created_at", today.toISOString()),
-    supabase.from("pn_leads").select("id", { count: "exact" }).eq("ai_mode", true).not("stage", "in", '("resolvido","perdido")'),
-    supabase.from("pn_leads").select("id", { count: "exact" }).eq("stage", "agendado"),
-    supabase.from("pn_leads").select("id", { count: "exact" }),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("clinic_slug", _clinicSlug).gte("created_at", today.toISOString()),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("clinic_slug", _clinicSlug).eq("ai_mode", true).not("stage", "in", '("resolvido","perdido")'),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("clinic_slug", _clinicSlug).eq("stage", "agendado"),
+    supabase.from("pn_leads").select("id", { count: "exact" }).eq("clinic_slug", _clinicSlug),
   ]);
   const stats = {
     hoje:      todayRes.count  || 0,
@@ -237,7 +259,7 @@ export async function fetchMessages(leadId: string) {
   return data;
 }
 
-export async function sendMessage(leadId: string, phone: string, text: string, senderNome: string) {
+export async function sendMessage(leadId: string, phone: string, text: string, senderNome: string, senderId?: string) {
   try {
     const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-send-message", {
       method: "POST",
@@ -245,7 +267,7 @@ export async function sendMessage(leadId: string, phone: string, text: string, s
         "Content-Type": "application/json",
         "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim(),
       },
-      body: JSON.stringify({ lead_id: leadId, phone, text, sender_nome: senderNome }),
+      body: JSON.stringify({ lead_id: leadId, phone, text, sender_nome: senderNome, sender_id: senderId }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -279,7 +301,7 @@ export async function upsertMedico(m: {
     return !error;
   }
   const { error } = await supabase.from("pn_medicos")
-    .insert({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ativo: true });
+    .insert({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ativo: true, clinic_slug: _clinicSlug });
   return !error;
 }
 
@@ -327,6 +349,7 @@ export async function createLead(data: {
     estado:          data.estado || null,
     cep:             data.cep ? data.cep.replace(/\D/g, "") : null,
     convenio:        data.convenio || null,
+    clinic_slug:     _clinicSlug,
     created_at:      new Date().toISOString(),
     updated_at:      new Date().toISOString(),
   });
@@ -365,6 +388,7 @@ export async function createLeadPresencial(data: {
     pagamento_metodo: data.pagamento_metodo || null,
     pagamento_data:   data.pagamento_data || null,
     pagamento_obs:    data.pagamento_obs || null,
+    clinic_slug:      _clinicSlug,
     created_at:       new Date().toISOString(),
     updated_at:       new Date().toISOString(),
   }).select().single();
@@ -438,6 +462,7 @@ export async function createAgendamento(payload: {
     ...payload,
     duracao_min: payload.duracao_min || 30,
     status: "confirmado",
+    clinic_slug: _clinicSlug,
     created_at: new Date().toISOString(),
   }).select().single();
   if (error) console.error("createAgendamento", error.message);
@@ -536,16 +561,26 @@ export async function upsertDisponibilidade(payload: {
 // ── Maria Global Mode ─────────────────────────────────────────────────────────
 
 export async function fetchMariaGlobalMode(): Promise<boolean> {
-  const { data } = await supabase.from("pn_config").select("value").eq("key", "maria_global_mode").maybeSingle();
+  const { data } = await supabase.from("pn_config").select("value")
+    .eq("key", "maria_global_mode").eq("clinic_slug", _clinicSlug).maybeSingle();
   return data?.value === "true";
 }
 
 export async function setMariaGlobalMode(active: boolean): Promise<void> {
-  await supabase.from("pn_config").upsert({
-    key: "maria_global_mode",
-    value: active ? "true" : "false",
-    updated_at: new Date().toISOString(),
-  });
+  // Tenta update primeiro, senão insert
+  const { count } = await supabase.from("pn_config")
+    .select("key", { count: "exact", head: true })
+    .eq("key", "maria_global_mode").eq("clinic_slug", _clinicSlug);
+  if ((count ?? 0) > 0) {
+    await supabase.from("pn_config")
+      .update({ value: active ? "true" : "false", updated_at: new Date().toISOString() })
+      .eq("key", "maria_global_mode").eq("clinic_slug", _clinicSlug);
+  } else {
+    await supabase.from("pn_config").insert({
+      key: "maria_global_mode", value: active ? "true" : "false",
+      clinic_slug: _clinicSlug, updated_at: new Date().toISOString(),
+    });
+  }
   await supabase.from("pn_leads")
     .update({ ai_mode: active, updated_at: new Date().toISOString() })
     .not("stage", "in", '("agendado","resolvido","perdido")');
@@ -680,6 +715,7 @@ export async function insertFinanceiro(payload: {
     parcelas: payload.parcelas || 1,
     data_pagamento: payload.data_pagamento || new Date().toISOString(),
     registrado_por: "manual",
+    clinic_slug: _clinicSlug,
   }).select().single();
   if (error) console.error("insertFinanceiro", error.message);
   return data;
@@ -697,7 +733,8 @@ export async function updateFinanceiro(id: string, payload: Record<string, any>)
 }
 
 export async function bulkInsertFinanceiro(rows: object[]) {
-  const { error } = await supabase.from("pn_financeiro").insert(rows);
+  const rowsWithClinic = rows.map(r => ({ ...r, clinic_slug: _clinicSlug }));
+  const { error } = await supabase.from("pn_financeiro").insert(rowsWithClinic);
   if (error) console.error("bulkInsertFinanceiro", error.message);
   return !error;
 }
@@ -889,6 +926,7 @@ export async function importAgendamentosExcel(
         stage:         "agendado",
         ai_mode:       false,
         first_message: "Importado via Excel",
+        clinic_slug:   _clinicSlug,
         created_at:    new Date().toISOString(),
         updated_at:    new Date().toISOString(),
       }).select("id").single();
@@ -907,6 +945,7 @@ export async function importAgendamentosExcel(
       nome_paciente:     row.nome     || null,
       telefone_paciente: phone        || null,
       observacoes:       row.obs      || null,
+      clinic_slug:       _clinicSlug,
       importado_em:      new Date().toISOString(),
       created_at:        new Date().toISOString(),
     });
@@ -927,6 +966,7 @@ export async function importAgendamentosExcel(
         parcelas:       row.parcelas || 1,
         data_pagamento: dataHora,
         registrado_por: "excel_import",
+        clinic_slug:    _clinicSlug,
         created_at:     new Date().toISOString(),
       });
     }

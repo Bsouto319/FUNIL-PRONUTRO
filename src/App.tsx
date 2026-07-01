@@ -1,13 +1,14 @@
 ﻿import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
-import { fetchCurrentUser } from "./lib/api";
+import { fetchCurrentUser, setClinicContext } from "./lib/api";
 import LoginPage from "./components/LoginPage";
 import Dashboard from "./components/Dashboard";
 
 export default function App() {
-  const [user, setUser]       = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [offline, setOffline] = useState(!navigator.onLine);
+  const [user, setUser]             = useState<any>(null);
+  const [clinicConfig, setClinicConfig] = useState<any>(null);
+  const [loading, setLoading]       = useState(true);
+  const [offline, setOffline]       = useState(!navigator.onLine);
 
   useEffect(() => {
     const goOffline = () => setOffline(true);
@@ -30,8 +31,10 @@ export default function App() {
 
     function buildFallback(session: any) {
       const email = session?.user?.email || "";
-      const rawName = email.split("@")[0] || "Usuário";
-      const nome = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      // Extrai apenas letras do prefixo do email, capitaliza a primeira palavra
+      const prefix = email.split("@")[0].replace(/[^a-zA-ZÀ-ÿ]/g, " ").trim();
+      const firstWord = prefix.split(/\s+/)[0] || "Usuário";
+      const nome = firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
       return { id: session.user.id, email, nome, role: "staff", ativo: true };
     }
 
@@ -42,9 +45,32 @@ export default function App() {
         const userPromise = fetchCurrentUser();
         const timeoutPromise = new Promise<null>(res => setTimeout(() => res(null), 6000));
         const u = await Promise.race([userPromise, timeoutPromise]);
-        if (mounted) setUser(u || fallback);
+        const finalUser = u || fallback;
+        if (mounted) {
+          setUser(finalUser);
+          const slug = finalUser?.clinic_slug || "pronutro";
+          // Seta defaults imediatos — app abre sem esperar o banco
+          setClinicContext(slug, "ProNutro CRM", "Maria");
+          setClinicConfig({ slug, clinic_name: "ProNutro CRM", agent_name: "Maria" });
+          // Atualiza config da clínica em background — não bloqueia o carregamento
+          supabase.from("clinic_configs")
+            .select("slug, clinic_name, agent_name")
+            .eq("slug", slug)
+            .maybeSingle()
+            .then(({ data: cfg }) => {
+              if (!mounted || !cfg) return;
+              const name  = cfg.clinic_name || "ProNutro CRM";
+              const agent = cfg.agent_name  || "Maria";
+              setClinicContext(slug, name, agent);
+              setClinicConfig({ slug, clinic_name: name, agent_name: agent });
+            });
+        }
       } catch {
-        if (mounted) setUser(fallback);
+        if (mounted) {
+          setUser(fallback);
+          setClinicContext("pronutro", "ProNutro CRM", "Maria");
+          setClinicConfig({ slug: "pronutro", clinic_name: "ProNutro CRM", agent_name: "Maria" });
+        }
       }
     }
 
@@ -108,7 +134,7 @@ export default function App() {
           MODO OFFLINE — exibindo dados salvos anteriormente
         </div>
       )}
-      {user ? <Dashboard user={user} /> : <LoginPage />}
+      {user ? <Dashboard user={user} clinicConfig={clinicConfig} /> : <LoginPage />}
     </>
   );
 }

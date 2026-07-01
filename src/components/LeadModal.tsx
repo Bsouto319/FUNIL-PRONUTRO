@@ -139,9 +139,9 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
         })
       .subscribe();
 
-    // Polling de 8s garante que mensagens enviadas pela Monica diretamente
+    // Polling de 3s garante que mensagens enviadas pela Monica diretamente
     // no WhatsApp (fora do sistema) apareçam, mesmo sem lead_id no webhook
-    const poll = setInterval(refreshMessages, 8000);
+    const poll = setInterval(refreshMessages, 3000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -158,7 +158,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     if (!text.trim() || sending) return;
     setSending(true);
     setSendError(false);
-    const ok = await sendMessage(lead.id, lead.phone, text.trim(), currentUser.nome);
+    const ok = await sendMessage(lead.id, lead.phone, text.trim(), currentUser.nome, currentUser.id);
     if (ok) {
       setText("");
     } else {
@@ -211,9 +211,15 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // iOS Safari só suporta audio/mp4; Android/Chrome suporta webm/opus
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus" : "audio/webm";
-      const mr = new MediaRecorder(stream, { mimeType });
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "";
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = () => {
@@ -608,25 +614,52 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
                             {isMaria ? "🤖 Maria IA" : `💬 ${m.sender_nome}`}
                           </p>
                         )}
-                        {m.media_type === "image" && m.media_url ? (
-                          <a href={m.media_url} target="_blank" rel="noreferrer">
-                            <img src={m.media_url} alt={m.media_filename || "imagem"} className="rounded-lg max-w-full max-h-60 object-cover mb-2 cursor-zoom-in" />
-                          </a>
-                        ) : m.media_type === "audio" && m.media_url ? (
-                          <audio controls src={m.media_url} className="w-full max-w-[220px] mb-2" />
+                        {m.media_type === "image" ? (
+                          m.media_url ? (
+                            <a href={m.media_url} target="_blank" rel="noreferrer">
+                              <img src={m.media_url} alt={m.media_filename || "imagem"} className="rounded-lg max-w-full max-h-60 object-cover mb-2 cursor-zoom-in" />
+                            </a>
+                          ) : (
+                            <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 mb-2">
+                              <span className="text-xs text-white/50">📷 {m.media_filename || "Imagem enviada"}</span>
+                            </div>
+                          )
+                        ) : m.media_type === "audio" || m.media_type === "ptt" ? (
+                          m.media_url ? (
+                            <div className="mb-2">
+                              {/* playsInline necessário no iOS para não abrir tela cheia */}
+                              <audio controls playsInline src={m.media_url} className="w-full max-w-[240px]" />
+                              {/* Fallback download para iOS Safari que não reproduz OGG/OPUS */}
+                              <a href={m.media_url} target="_blank" rel="noreferrer" download
+                                className="flex items-center justify-center gap-1 mt-1 text-[10px] text-white/35 hover:text-white/60 transition">
+                                <Download size={10} /> baixar áudio
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 mb-2">
+                              <span className="text-xs text-white/50">🎤 Áudio enviado</span>
+                            </div>
+                          )
                         ) : m.media_type === "video" && m.media_url ? (
                           <video controls src={m.media_url} className="rounded-lg max-w-full max-h-60 mb-2" />
-                        ) : m.media_type === "document" && m.media_url ? (
-                          <a href={m.media_url} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition mb-2">
-                            <FileText size={14} className="shrink-0 text-sky-300" />
-                            <span className="text-xs truncate max-w-[160px]">{m.media_filename || m.body || "Documento"}</span>
-                            <Download size={12} className="shrink-0 text-white/40 ml-auto" />
-                          </a>
+                        ) : m.media_type === "document" ? (
+                          m.media_url ? (
+                            <a href={m.media_url} target="_blank" rel="noreferrer"
+                              className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition mb-2">
+                              <FileText size={14} className="shrink-0 text-sky-300" />
+                              <span className="text-xs truncate max-w-[160px]">{m.media_filename || m.body || "Documento"}</span>
+                              <Download size={12} className="shrink-0 text-white/40 ml-auto" />
+                            </a>
+                          ) : (
+                            <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/10 mb-2">
+                              <FileText size={14} className="shrink-0 text-sky-300" />
+                              <span className="text-xs truncate max-w-[160px]">{m.media_filename || m.body || "Documento enviado"}</span>
+                            </div>
+                          )
                         ) : m.media_type === "sticker" && m.media_url ? (
                           <img src={m.media_url} alt="sticker" className="w-20 h-20 object-contain mb-2" />
                         ) : null}
-                        {m.body && !["image","video","sticker"].includes(m.media_type) && (
+                        {m.body && !["image","video","sticker","document","audio","ptt"].includes(m.media_type) && (
                           <p className="whitespace-pre-wrap break-words">{m.body}</p>
                         )}
                         {m.body && m.media_type === "image" && m.body !== "[image]" && (
@@ -662,7 +695,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               <div ref={bottomRef} />
             </div>
             <form onSubmit={handleSend} className="flex flex-col gap-1.5 px-5 py-3 border-t border-white/10 flex-shrink-0">
-              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" className="hidden"
+              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
                 onChange={e => { if (e.target.files?.[0]) { setSelectedFile(e.target.files[0]); setAudioBlob(null); } }} />
 
               {sendError && (
