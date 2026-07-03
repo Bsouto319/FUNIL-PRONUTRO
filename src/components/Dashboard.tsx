@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Filter, Bell, CalendarDays, Volume2, VolumeX, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, Users, Calendar, BarChart3, LogOut, Bot, UserPlus, X, TrendingDown, Zap, Brain, Bell, CalendarDays, Volume2, VolumeX, ChevronDown } from "lucide-react";
 import Pipeline from "./Pipeline";
 import LeadModal from "./LeadModal";
 import AgendaPage from "./AgendaPage";
@@ -45,11 +45,8 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
 
   const [newLeadAlert, setNewLeadAlert]   = useState(false);
   const [newMsgAlert,  setNewMsgAlert]    = useState(false);
-  const [filterHoje, setFilterHoje]       = useState(false);
-  const [dayFilter, setDayFilter]         = useState<string | null>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  });
+  // Padrão "Todos" — antes começava filtrado em "Hoje", escondendo conversas por engano
+  const [dayFilter, setDayFilter]         = useState<string | null>(null);
   const [muted, setMuted]                 = useState(() => localStorage.getItem('pn_sound_muted') === 'true');
   const [showPriorityQueue, setShowPriorityQueue] = useState(false);
   const [showFollowUp, setShowFollowUp]           = useState(false);
@@ -500,16 +497,6 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
 
   const roleLabel: Record<string, string> = { gerente: "GERENTE", secretaria: "SECRETÁRIA", medico: "MÉDICO", admin: "ADMIN" };
 
-  // "Hoje em Brasília" começa às 03:00 UTC (UTC-3)
-  const brasiliaToday = (() => {
-    const d = new Date();
-    const br = new Date(d.getTime() - 3 * 3600000);
-    br.setUTCHours(0, 0, 0, 0);
-    return new Date(br.getTime() + 3 * 3600000);
-  })();
-  const filteredLeads = filterHoje
-    ? leads.filter(l => new Date(l.created_at) >= brasiliaToday)
-    : leads;
 
   const displayName = (user.nome || "").includes("@") ? (user.nome as string).split("@")[0] : (user.nome || "Usuário");
   const firstName = displayName.split(" ")[0];
@@ -642,21 +629,6 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
                   className="w-full pl-9 pr-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 transition"
                 />
               </div>
-              <button
-                onClick={() => setFilterHoje(f => !f)}
-                title={filterHoje ? "Mostrando só leads de hoje — clique para ver todos" : "Filtrar por leads de hoje"}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border transition whitespace-nowrap ${
-                  filterHoje
-                    ? "bg-sky-600 text-white border-sky-500/50 shadow-lg shadow-sky-500/20"
-                    : "bg-slate-100 text-slate-500 border-slate-200 hover:text-slate-700"
-                }`}
-              >
-                <Filter size={11} />
-                <span className="hidden sm:inline">Hoje</span>
-                {filterHoje && filteredLeads.length > 0 && (
-                  <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[9px] font-black">{filteredLeads.length}</span>
-                )}
-              </button>
             </div>
           )}
 
@@ -887,7 +859,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
                     {opt.label}
                     {dayFilter === opt.value && opt.value !== null && (
                       <span className="ml-1.5 bg-white/25 px-1 py-0.5 rounded-full text-[9px]">
-                        {filteredLeads.filter(l => {
+                        {leads.filter(l => {
                           const ref = l.last_message_at ?? l.created_at;
                           const d = new Date(ref);
                           const y = d.getFullYear();
@@ -916,7 +888,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
                 )}
               </div>
               <div className="flex-1 min-h-0">
-                <Pipeline leads={filteredLeads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} dayFilter={dayFilter} />
+                <Pipeline leads={leads} onSelect={setSelected} onToggleAi={handleToggleAi} currentUser={user} dayFilter={dayFilter} />
               </div>
             </div>
           )
