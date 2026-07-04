@@ -1,19 +1,25 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAudit } from "../_shared/audit.ts";
 
 const UAZAPI_URL   = "https://btechsoutoshop.uazapi.com";
 const UAZAPI_TOKEN = "5efd90a1-116b-4c86-b715-7bac2fab658a";
 const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const OPENAI_KEY   = Deno.env.get("OPENAI_KEY") || "";
+const OPENAI_KEY   = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY") || "";
 const OWNER_JID    = "556199548881";
 
 const db    = createClient(SUPABASE_URL, SUPABASE_KEY);
 const toMs  = (ts: number) => ts > 0 && ts < 1e12 ? ts * 1000 : ts;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-const PROTECTED_STAGES = ["agendado", "resolvido", "financeiro"];
-const VALID_STAGES     = ["novo_lead", "em_atendimento", "conversando", "aguardando", "agendado", "resolvido", "financeiro"];
+// Maria desativada manualmente (era usada com delay de "digitando" pra evitar banimento da Meta
+// quando ela respondia todo mundo). Trava aqui no código além do toggle em pn_config —
+// só reativar de propósito quando for religar a IA.
+const MARIA_ENABLED = false;
+
+const PROTECTED_STAGES = ["agendado", "resolvido", "financeiro", "medicacao", "negociacao", "lista_espera"];
+const VALID_STAGES     = ["novo_lead", "em_atendimento", "conversando", "aguardando", "agendado", "resolvido", "financeiro", "medicacao", "negociacao", "lista_espera"];
 
 
 // ── Lock (igual ao SellPilot) ─────────────────────────────────────────────────
@@ -46,6 +52,25 @@ async function sendWa(phone: string, text: string) {
     body: JSON.stringify({ number: phone, text }),
   });
   if (!res.ok) console.error("sendWa error", res.status);
+}
+
+// A URL que vem em content.URL é o arquivo bruto CRIPTOGRAFADO do WhatsApp
+// (.enc) — não toca/abre em navegador nenhum. Precisa desse endpoint pra
+// pegar o arquivo já descriptografado e hospedado, aí sim reproduzível.
+async function resolveMediaUrl(messageid: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${UAZAPI_URL}/message/download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
+      body: JSON.stringify({ id: messageid, transcribe: false }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.fileURL || null;
+  } catch (err) {
+    console.error("resolveMediaUrl error", messageid, err);
+    return null;
+  }
 }
 
 async function setPresence(phone: string, state: "composing" | "paused") {
@@ -212,7 +237,7 @@ Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Qu
 {"message":"texto","stage":"novo_lead|em_atendimento|conversando|aguardando","action":"none|criar_agendamento|handoff","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação ou null","medico_preferido":"nome ou null"}`;
 
 // ── Criar agendamento ─────────────────────────────────────────────────────────
-async function criarAgendamento(leadId: string, medicoNome: string, dataHora: string): Promise<void> {
+async function criarAgendamento(leadId: string, medicoNome: string, dataHora: string, phone?: string): Promise<void> {
   const last = medicoNome.split(" ").pop();
   const { data: med } = await db.from("pn_medicos").select("id").ilike("nome", `%${last}%`).maybeSingle();
   if (!med) return;
@@ -228,6 +253,14 @@ async function criarAgendamento(leadId: string, medicoNome: string, dataHora: st
     updated_at: new Date().toISOString(),
   }).eq("id", leadId);
   console.log(`Agendamento criado → ${leadId} ${medicoNome} ${dataHora}`);
+  await logAudit({
+    action: "APPOINTMENT_CREATED",
+    table_name: "pn_agendamentos",
+    record_id: leadId,
+    user_phone: phone,
+    severity: "info",
+    metadata: { medico: medicoNome, data_hora: dataHora },
+  });
 }
 
 // ── Maria responde ────────────────────────────────────────────────────────────
@@ -276,19 +309,24 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
     const sent = await safeSend(lead.id, lead.phone, parsed.message, `onboard_${lead.id}`);
     if (!sent) return;
     console.log(`Maria ONBOARD → ${lead.phone} fromGoogle=${fromGoogle}`);
+    await logAudit({
+      action: "AI_ONBOARD",
+      table_name: "pn_mensagens",
+      record_id: lead.id,
+      user_phone: lead.phone,
+      severity: "info",
+      metadata: { from_google: fromGoogle, action: parsed.action },
+    });
 
+    // Stage NUNCA é alterado automaticamente — só humano move no Kanban
     const upd: any = { updated_at: new Date().toISOString() };
-    if (parsed.stage && VALID_STAGES.includes(parsed.stage)) upd.stage = parsed.stage;
     if (parsed.nome_paciente && !lead.name) upd.name = parsed.nome_paciente;
     if (parsed.notas_paciente)              upd.notas = fromGoogle ? `[Google] ${parsed.notas_paciente}`.trim() : parsed.notas_paciente;
     if (parsed.medico_preferido)            upd.medico_preferido = parsed.medico_preferido;
     await db.from("pn_leads").update(upd).eq("id", lead.id);
 
     if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
-      await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora);
-    }
-    if (parsed.action === "handoff" || parsed.action === "perdido") {
-      await db.from("pn_leads").update({ stage: "aguardando", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
+      await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora, lead.phone);
     }
     return;
   }
@@ -345,19 +383,24 @@ async function mariaRespond(lead: any, isNew: boolean): Promise<void> {
   const sent = await safeSend(lead.id, lead.phone, parsed.message, `reply_${lastIn.id}`);
   if (!sent) return;
   console.log(`Maria → ${lead.phone} | stage=${parsed.stage} action=${parsed.action}`);
+  await logAudit({
+    action: "AI_REPLY",
+    table_name: "pn_mensagens",
+    record_id: lead.id,
+    user_phone: lead.phone,
+    severity: "info",
+    metadata: { maria_action: parsed.action, stage: parsed.stage },
+  });
 
+  // Stage NUNCA é alterado automaticamente — só humano move no Kanban
   const upd: any = { updated_at: new Date().toISOString() };
-  if (parsed.stage && VALID_STAGES.includes(parsed.stage) && !PROTECTED_STAGES.includes(lead.stage)) upd.stage = parsed.stage;
   if (parsed.nome_paciente && !lead.name) upd.name = parsed.nome_paciente;
   if (parsed.notas_paciente)              upd.notas = parsed.notas_paciente;
   if (parsed.medico_preferido)            upd.medico_preferido = parsed.medico_preferido;
   await db.from("pn_leads").update(upd).eq("id", lead.id);
 
   if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
-    await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora);
-  }
-  if (parsed.action === "handoff" || parsed.action === "perdido") {
-    await db.from("pn_leads").update({ stage: "aguardando", ai_mode: false, updated_at: new Date().toISOString() }).eq("id", lead.id);
+    await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora, lead.phone);
   }
 }
 
@@ -370,6 +413,9 @@ async function runPoll() {
   }
 
   try {
+    // Aguarda 1.5s para UAZAPI popular pushName do contato antes de buscar mensagens
+    await sleep(1500);
+
     const { data: cfg } = await db.from("pn_config").select("value").eq("key", "maria_global_mode").maybeSingle();
     const mariaActive = cfg?.value === "true";
 
@@ -380,7 +426,7 @@ async function runPoll() {
     const res = await fetch(`${UAZAPI_URL}/message/find`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
-      body: JSON.stringify({ limit: 100, orderBy: "messageTimestamp", order: "DESC" }),
+      body: JSON.stringify({ limit: 500, orderBy: "messageTimestamp", order: "DESC" }),
     });
 
     if (!res.ok) {
@@ -409,7 +455,7 @@ async function runPoll() {
         hasContent && m.messageType !== "ReactionMessage";
     });
 
-    console.log(`pronutro-poll v28: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
+    console.log(`pronutro-poll v32: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
 
     if (!newMsgs.length) {
       await db.from("pn_poll_state").upsert({ id: 1, last_poll_at: now });
@@ -428,8 +474,10 @@ async function runPoll() {
     }
 
     let processed = 0;
+    let chatErrors = 0;
 
     for (const [chatid, msgs] of byChat.entries()) {
+     try {
       const phone = chatid.split("@")[0];
       if (!phone || phone === OWNER_JID) continue;
 
@@ -480,29 +528,30 @@ async function runPoll() {
       const upsertData: any = {
         phone,
         last_message_at: new Date(latestTs).toISOString(),
-        last_sender_nome: senderName,   // paciente falou por último
+        last_sender_nome: senderName,
         updated_at: new Date().toISOString(),
       };
       if (senderName) upsertData.whatsapp_name = senderName;
 
-      // Estágios "ativos" — lead já está visível no Kanban, não precisa reativar
-      const ACTIVE_STAGES = ["em_atendimento", "aguardando", "agendado"];
-
       let lead: any;
       if (isNew) {
-        // Novo contato → direto para "em_atendimento" (fila de atendimento)
+        // Novo contato → entra em "em_atendimento" (única movimentação automática permitida)
         upsertData.stage         = "em_atendimento";
         upsertData.first_message = firstBody.slice(0, 500);
         upsertData.ai_mode       = mariaActive;
         upsertData.name          = senderName || null;
         const { data: newLead } = await db.from("pn_leads").insert(upsertData).select("*").single();
         lead = newLead;
+        await logAudit({
+          action: "LEAD_CREATED",
+          table_name: "pn_leads",
+          record_id: lead?.id,
+          user_phone: phone,
+          severity: "info",
+          metadata: { name: senderName, ai_mode: mariaActive, first_message: firstBody.slice(0, 100) },
+        });
       } else {
-        // Lead existente em estágio inativo/fechado → reativa para "em_atendimento"
-        if (!ACTIVE_STAGES.includes(existingLead.stage)) {
-          upsertData.stage = "em_atendimento";
-          console.log(`Reativando ${phone}: ${existingLead.stage} → em_atendimento`);
-        }
+        // Lead existente → NUNCA muda o stage automaticamente. Só humano move.
         await db.from("pn_leads").update(upsertData).eq("id", existingLead.id);
         lead = { ...existingLead, ...upsertData };
       }
@@ -515,10 +564,12 @@ async function runPoll() {
         const body     = rawBody || (mType ? `[${mType}]` : "");
         const eid      = m.messageid || m.id;
         if (!eid) continue;
+        // Para mídia, busca a URL já descriptografada — a de content.URL é criptografada e não reproduz
+        const mediaUrl = mType ? await resolveMediaUrl(eid) : null;
         await db.from("pn_mensagens").upsert(
           { lead_id: lead.id, direction: "in", body, external_id: eid,
             sender_nome: null,
-            media_url:      m.content?.URL || null,
+            media_url:      mediaUrl,
             media_type:     mType,
             media_mimetype: m.content?.mimetype || null,
             media_filename: m.content?.fileName || null,
@@ -549,14 +600,24 @@ async function runPoll() {
         );
       }
 
-      // Maria responde
-      if (mariaActive && lead.ai_mode && !PROTECTED_STAGES.includes(lead.stage)) {
+      // Maria responde — desativada manualmente (MARIA_ENABLED = false)
+      if (MARIA_ENABLED && mariaActive && lead.ai_mode && !PROTECTED_STAGES.includes(lead.stage)) {
         await mariaRespond(lead, isNew);
       }
       processed++;
+     } catch (chatErr) {
+      // Isola erro de UM chat — sem isso, uma falha aqui derrubava o restante
+      // do lote e essas mensagens eram perdidas pra sempre (cursor já tinha avançado)
+      chatErrors++;
+      console.error(`pronutro-poll: erro processando chat ${chatid}:`, chatErr);
+      await logAudit({
+        action: "POLL_CHAT_ERROR", severity: "error",
+        metadata: { chatid, error: String(chatErr) },
+      });
+     }
     }
 
-    return { processed, newMessages: newMsgs.length };
+    return { processed, chatErrors, newMessages: newMsgs.length };
   } finally {
     await releaseLock();
   }
@@ -571,6 +632,7 @@ Deno.serve(async (_req: Request) => {
     return new Response(JSON.stringify(result), { headers: cors });
   } catch (err) {
     console.error("pronutro-poll error", err);
+    await logAudit({ action: "POLL_ERROR", severity: "error", metadata: { error: String(err) } });
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: cors });
   }
 });
