@@ -349,7 +349,7 @@ export default function AgendaPage({
   const dayLabel = selectedDateObj.toLocaleDateString("pt-BR", { weekday:"long", day:"numeric", month:"long" });
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: "#1e2a47" }}>
 
       {/* Top bar */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 flex items-center gap-3 flex-wrap bg-white">
