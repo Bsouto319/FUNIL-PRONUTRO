@@ -153,10 +153,13 @@ async function toolUpdateLeadStage(leadId: string, stage: string): Promise<objec
   return { success: !error, error: error?.message };
 }
 
+// Alerta pro Bruno sempre pelo WhatsApp da BTech, não pelo da ProNutro
+const ALERT_TOKEN = Deno.env.get("UAZAPI_ALERT_TOKEN") || UAZAPI_TOKEN;
+
 async function toolNotifyOwner(message: string): Promise<object> {
   await fetch(`${UAZAPI_URL}/send/text`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
+    headers: { "Content-Type": "application/json", token: ALERT_TOKEN },
     body: JSON.stringify({ number: ALERT_PHONE, text: message }),
   }).catch(() => {});
   return { sent: true };

@@ -24,10 +24,14 @@ function isBusinessHours(): boolean {
   return h >= 7 && h < 22;
 }
 
+// Alerta pro Bruno sempre pelo WhatsApp da BTech, não pelo da ProNutro
+// (o paciente não pode ver notificação de sistema saindo do número da clínica)
+const ALERT_TOKEN = Deno.env.get("UAZAPI_ALERT_TOKEN") || UAZAPI_TOKEN;
+
 async function sendAlert(text: string): Promise<void> {
   await fetch(`${UAZAPI_URL}/send/text`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
+    headers: { "Content-Type": "application/json", token: ALERT_TOKEN },
     body: JSON.stringify({ number: ALERT_PHONE, text }),
   }).catch(e => console.error("sendAlert failed:", e));
 }
