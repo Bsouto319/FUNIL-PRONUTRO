@@ -98,6 +98,8 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const [perfSaved,     setPerfSaved]     = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
   // Notas Fiscais state
   const [nfs, setNfs]               = useState<any[]>([]);
@@ -149,9 +151,25 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
     };
   }, [lead.id, refreshMessages]);
 
+  // Só desce automaticamente se o usuário já estava perto do final — senão,
+  // toda atualização do polling (a cada 3s) puxava a tela pra baixo mesmo
+  // enquanto a pessoa tentava ler mensagens mais antigas.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  // Trocou de conversa — sempre começa no final, mesmo que a anterior tivesse
+  // ficado com o scroll pra cima.
+  useEffect(() => {
+    isNearBottomRef.current = true;
+  }, [lead.id]);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -568,7 +586,7 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
+            <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
               {messages.length === 0 && (
                 <p className="text-white/20 text-xs text-center py-8">Sem mensagens ainda</p>
               )}
