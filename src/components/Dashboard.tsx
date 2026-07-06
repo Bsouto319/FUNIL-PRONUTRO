@@ -126,7 +126,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
         setTimeout(() => reject(new Error("timeout")), 15000)
       );
       const [l, s] = await Promise.race([
-        Promise.all([fetchLeads(query), fetchStats()]),
+        Promise.all([fetchLeads(query, true), fetchStats()]),
         timeout,
       ]);
       const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
@@ -289,7 +289,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
   function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value;
     setSearch(v);
-    fetchLeads(v).then(setLeads);
+    fetchLeads(v, true).then(setLeads);
   }
 
   async function handleOrganize() {

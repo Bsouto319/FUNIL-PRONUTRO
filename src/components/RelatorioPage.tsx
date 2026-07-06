@@ -514,7 +514,7 @@ export default function RelatorioPage() {
   const convTaxa       = convTotal > 0 ? Math.round(convConv / convTotal * 100) : 0;
 
   return (
-    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
+    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5" style={{ background: "#1e2a47" }}>
 
       {/* Tab switcher topo */}
       <div className="flex gap-1 border-b border-white/10 pb-3">
