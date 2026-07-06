@@ -1,8 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAudit } from "../_shared/audit.ts";
 
-const UAZAPI_URL   = "https://btechsoutoshop.uazapi.com";
-const UAZAPI_TOKEN = "5efd90a1-116b-4c86-b715-7bac2fab658a";
+const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://btechsoutoshop.uazapi.com";
+const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
 const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const ALERT_PHONE  = "5561982025951";
@@ -213,8 +214,16 @@ async function runMonitor() {
 
   if (toAlert.length > 0) {
     console.log("Issues detectados, AI-Fix acionado:", toAlert.map(r => r.message));
+    for (const r of toAlert) {
+      await logAudit({
+        action: "MONITOR_ALERT",
+        severity: r.type === "poll" ? "critical" : "warning",
+        metadata: { issue_type: r.type, message: r.message, auto_fixed: r.autoFixed ?? false },
+      });
+    }
   } else {
     console.log("Monitor v3 OK — sem alertas");
+    await logAudit({ action: "MONITOR_OK", severity: "info", metadata: { checks: results.map(r => r.type) } });
   }
 
   return {
@@ -236,6 +245,7 @@ Deno.serve(async (_req: Request) => {
   } catch (err) {
     console.error("monitor error", err);
     await sendAlert(`🔴 *ProNutro Monitor — FALHA CRÍTICA*\n${String(err)}\n\n_${brTime()}_`).catch(() => {});
+    await logAudit({ action: "MONITOR_CRASH", severity: "critical", metadata: { error: String(err) } });
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: cors });
   }
 });
