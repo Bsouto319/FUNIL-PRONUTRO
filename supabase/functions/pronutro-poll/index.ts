@@ -423,10 +423,11 @@ async function runPoll() {
     const lastTs: number = state?.last_message_timestamp ?? 0;
     const now = new Date().toISOString();
 
+    const FETCH_LIMIT = 1500;
     const res = await fetch(`${UAZAPI_URL}/message/find`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
-      body: JSON.stringify({ limit: 500, orderBy: "messageTimestamp", order: "DESC" }),
+      body: JSON.stringify({ limit: FETCH_LIMIT, orderBy: "messageTimestamp", order: "DESC" }),
     });
 
     if (!res.ok) {
@@ -436,6 +437,17 @@ async function runPoll() {
 
     const payload = await res.json();
     const all: any[] = payload.messages ?? [];
+
+    // Se bateu no limite, pode haver mensagens mais antigas que ficaram de fora
+    // desse lote — o cursor não pode avançar até o topo, senão elas se perdem
+    // pra sempre. Trava o avanço no ponto mais antigo coberto por este lote.
+    if (all.length >= FETCH_LIMIT) {
+      console.error(`pronutro-poll: lote atingiu o limite de ${FETCH_LIMIT} — possível backlog maior que isso`);
+      await logAudit({
+        action: "POLL_TRUNCATION_RISK", severity: "critical",
+        metadata: { fetched: all.length, limit: FETCH_LIMIT, lastTs },
+      });
+    }
 
     const MEDIA_TYPES = ["ImageMessage","AudioMessage","VideoMessage","DocumentMessage","StickerMessage","PttMessage"];
     function getMediaType(msgType: string): string | null {
