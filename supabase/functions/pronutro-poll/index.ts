@@ -63,20 +63,75 @@ async function sendWa(token: string, phone: string, text: string) {
   if (!res.ok) console.error("sendWa error", res.status);
 }
 
+async function sendDocument(token: string, phone: string, base64: string, fileName: string): Promise<boolean> {
+  const res = await fetch(`${UAZAPI_URL}/send/document`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", token },
+    body: JSON.stringify({ number: phone, document: base64, fileName }),
+  });
+  if (!res.ok) console.error("sendDocument error", res.status);
+  return res.ok;
+}
+
+// ── Nota fiscal: busca no arquivo já salvo pela recepção (pn_notas_fiscais) ───
+// Prioriza match por lead_id (upload feito direto no card do Kanban); se a nota
+// foi salva "avulsa" (sem lead_id), tenta por nome do paciente. Nunca inventa —
+// se não achar, Maria faz handoff pra equipe em vez de fingir que enviou.
+async function findNotaFiscal(clinicSlug: string, lead: any, dataBusca?: string): Promise<any | null> {
+  let q = db.from("pn_notas_fiscais").select("*").eq("clinic_slug", clinicSlug).eq("lead_id", lead.id);
+  if (dataBusca) q = q.eq("data_emissao", dataBusca);
+  q = q.order("created_at", { ascending: false }).limit(1);
+  const { data } = await q.maybeSingle();
+  if (data) return data;
+
+  if (lead.name) {
+    let q2 = db.from("pn_notas_fiscais").select("*").eq("clinic_slug", clinicSlug)
+      .ilike("nome_paciente", `%${lead.name}%`);
+    if (dataBusca) q2 = q2.eq("data_emissao", dataBusca);
+    q2 = q2.order("created_at", { ascending: false }).limit(1);
+    const { data: byName } = await q2.maybeSingle();
+    if (byName) return byName;
+  }
+  return null;
+}
+
+async function enviarNotaFiscal(cfg: any, lead: any, nf: any): Promise<boolean> {
+  const { data: fileData, error } = await db.storage.from("notas-fiscais").download(nf.file_path);
+  if (error || !fileData) {
+    console.error("enviarNotaFiscal: download falhou", nf.file_path, error?.message);
+    return false;
+  }
+  const buf    = new Uint8Array(await fileData.arrayBuffer());
+  const base64 = btoa(String.fromCharCode(...buf));
+  const token  = resolveToken(cfg);
+  const ok = await sendDocument(token, lead.phone, base64, nf.file_name || "nota-fiscal.pdf");
+  if (ok) {
+    await db.from("pn_notas_fiscais").update({ sent_at: new Date().toISOString() }).eq("id", nf.id);
+  }
+  return ok;
+}
+
 // A URL que vem em content.URL é o arquivo bruto CRIPTOGRAFADO do WhatsApp
 // (.enc) — não toca/abre em navegador nenhum. Precisa desse endpoint pra
 // pegar o arquivo já descriptografado e hospedado, aí sim reproduzível.
-async function resolveMediaUrl(token: string, messageid: string): Promise<string | null> {
+// Retry: falha pontual da UAZAPI não pode virar "mídia perdida pra sempre" —
+// isso já foi um bug real (áudio/imagem sumindo do Kanban).
+async function resolveMediaUrl(token: string, messageid: string, attempt = 1): Promise<string | null> {
   try {
     const res = await fetch(`${UAZAPI_URL}/message/download`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token },
       body: JSON.stringify({ id: messageid, transcribe: false }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (attempt < 3) { await sleep(1500 * attempt); return resolveMediaUrl(token, messageid, attempt + 1); }
+      console.error(`resolveMediaUrl: falhou após 3 tentativas msg=${messageid} status=${res.status}`);
+      return null;
+    }
     const data = await res.json();
     return data.fileURL || null;
   } catch (err) {
+    if (attempt < 3) { await sleep(1500 * attempt); return resolveMediaUrl(token, messageid, attempt + 1); }
     console.error("resolveMediaUrl error", messageid, err);
     return null;
   }
@@ -101,9 +156,14 @@ async function safeSend(
   if (error) { console.log("safeSend error:", error.message); return false; }
   if (!data || data.length === 0) { console.log("safeSend dup:", replyKey); return false; }
   const token = resolveToken(cfg);
-  // Anti-ban: simula digitação humana proporcional ao tamanho da mensagem
+  // Anti-ban: simula digitação humana proporcional ao tamanho da mensagem.
+  // Configurável por clínica (reply_delay_min_ms/reply_delay_max_ms em clinic_configs) —
+  // clínicas que vão deixar a Maria responder 24h/todo mundo precisam de delay maior
+  // pra não levar ban da Meta por comportamento de bot.
   await setPresence(token, phone, "composing");
-  const typingMs = Math.min(3000 + text.length * 25, 9000) + Math.floor(Math.random() * 2000);
+  const minMs = cfg.reply_delay_min_ms ?? 3000;
+  const maxExtra = cfg.reply_delay_max_ms ? (cfg.reply_delay_max_ms - minMs) : 6000;
+  const typingMs = Math.min(minMs + text.length * 25, minMs + maxExtra) + Math.floor(Math.random() * 2000);
   await sleep(typingMs);
   await sendWa(token, phone, text);
   await db.from("pn_leads").update({
@@ -213,6 +273,13 @@ Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Qu
 ## SE PERGUNTAREM SE É ROBÔ / IA
 "Sou sim! Sou a ${agent}, assistente virtual da ${nome} 😊 Posso te ajudar com agendamentos e informações. Mas se preferir falar com a equipe, é só pedir!"
 
+## NOTA FISCAL
+Se o paciente pedir a nota fiscal (de consulta ou compra), pergunte a DATA da consulta/compra
+(se ele não tiver informado ainda) e use action:"buscar_nota_fiscal" com data_busca preenchida
+(formato YYYY-MM-DD). NUNCA diga que já enviou ou invente que vai enviar — quem confirma o
+envio é o sistema, não você. Se o sistema não achar a nota (você vai saber pela próxima
+mensagem do histórico), avise que vai verificar com a equipe e volta com uma posição.
+
 ## REGRAS ABSOLUTAS
 - NUNCA diga "não entendi" — sempre interprete e redirecione
 - NUNCA invente horários disponíveis
@@ -220,7 +287,7 @@ Se PERFIL DO PACIENTE estiver no contexto: cumprimente pelo nome ("Oi [nome]! Qu
 - Sempre ofereça falar com humano se o paciente parecer insatisfeito${extra}
 
 ## RESPOSTA (sempre JSON):
-{"message":"texto","stage":"novo_lead|em_atendimento|conversando|aguardando","action":"none|criar_agendamento|handoff","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação ou null","medico_preferido":"nome ou null"}`;
+{"message":"texto","stage":"novo_lead|em_atendimento|conversando|aguardando","action":"none|criar_agendamento|handoff|buscar_nota_fiscal","medico_nome":"nome ou null","data_hora":"YYYY-MM-DDTHH:MM:00 ou null","nome_paciente":"nome ou null","notas_paciente":"observação ou null","medico_preferido":"nome ou null","data_busca":"YYYY-MM-DD ou null"}`;
 }
 
 // ── Criar agendamento ─────────────────────────────────────────────────────────
@@ -316,6 +383,9 @@ async function mariaRespond(cfg: any, lead: any, isNew: boolean): Promise<void> 
     if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
       await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora, lead.phone);
     }
+    if (parsed.action === "buscar_nota_fiscal") {
+      await handleBuscarNotaFiscal(cfg, lead, parsed.data_busca);
+    }
     return;
   }
 
@@ -388,6 +458,29 @@ async function mariaRespond(cfg: any, lead: any, isNew: boolean): Promise<void> 
   if (parsed.action === "criar_agendamento" && parsed.medico_nome && parsed.data_hora) {
     await criarAgendamento(lead.id, parsed.medico_nome, parsed.data_hora, lead.phone);
   }
+  if (parsed.action === "buscar_nota_fiscal") {
+    await handleBuscarNotaFiscal(cfg, lead, parsed.data_busca);
+  }
+}
+
+// Busca a nota já salva pela recepção e manda por WhatsApp. Nunca inventa:
+// se não achar, só avisa a equipe — a Maria já disse ao paciente que ia verificar.
+async function handleBuscarNotaFiscal(cfg: any, lead: any, dataBusca?: string): Promise<void> {
+  const nf = await findNotaFiscal(cfg.slug, lead, dataBusca);
+  if (!nf) {
+    console.log(`nota fiscal não encontrada → lead=${lead.id} data=${dataBusca || "?"}`);
+    await logAudit({
+      action: "NOTA_FISCAL_NOT_FOUND", severity: "warning",
+      metadata: { clinic: cfg.slug, lead_id: lead.id, phone: lead.phone, data_busca: dataBusca },
+    });
+    return;
+  }
+  const ok = await enviarNotaFiscal(cfg, lead, nf);
+  await logAudit({
+    action: ok ? "NOTA_FISCAL_SENT" : "NOTA_FISCAL_SEND_FAILED",
+    severity: ok ? "info" : "error",
+    metadata: { clinic: cfg.slug, lead_id: lead.id, phone: lead.phone, nf_id: nf.id },
+  });
 }
 
 const MEDIA_TYPES = ["ImageMessage","AudioMessage","VideoMessage","DocumentMessage","StickerMessage","PttMessage"];
