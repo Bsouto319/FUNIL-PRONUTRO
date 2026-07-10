@@ -529,11 +529,19 @@ async function runPollForClinic(cfg: any) {
     const payload = await res.json();
     const all: any[] = payload.messages ?? [];
 
-    if (all.length >= FETCH_LIMIT) {
-      console.error(`pronutro-poll[${slug}]: lote atingiu o limite de ${FETCH_LIMIT} — possível backlog maior que isso`);
+    // /message/find sempre devolve os FETCH_LIMIT mais recentes do historico inteiro,
+    // nao "desde lastTs" -- entao all.length >= FETCH_LIMIT e' sempre verdade pra uma
+    // clinica com mais de 1500 mensagens na vida toda (nao indica risco nenhum sozinho).
+    // O risco real e' quando a mensagem mais ANTIGA do lote ainda e' mais nova que lastTs:
+    // isso significa que pode existir mensagem nova (> lastTs) que ficou de fora do lote.
+    const oldestFetchedTs = all.length ? Math.min(...all.map((m: any) => toMs(m.messageTimestamp))) : 0;
+    const trueTruncationRisk = all.length >= FETCH_LIMIT && oldestFetchedTs > lastTs;
+
+    if (trueTruncationRisk) {
+      console.error(`pronutro-poll[${slug}]: lote atingiu o limite de ${FETCH_LIMIT} e ainda sobrou mensagem nova antes do corte — possível backlog maior que isso`);
       await logAudit({
         action: "POLL_TRUNCATION_RISK", severity: "critical",
-        metadata: { clinic: slug, fetched: all.length, limit: FETCH_LIMIT, lastTs },
+        metadata: { clinic: slug, fetched: all.length, limit: FETCH_LIMIT, lastTs, oldestFetchedTs },
       });
     }
 
