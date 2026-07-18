@@ -78,11 +78,12 @@ async function checkPoll(): Promise<CheckResult> {
       fixed = r.ok;
     } catch { /* silencia */ }
 
+    if (fixed) return { type: "poll", ok: true, autoFixed: true };
     return {
       type: "poll",
       ok: false,
-      autoFixed: fixed,
-      message: `Poll parado há ${Math.round(ageMin)} min — auto-restart ${fixed ? "✅ executado" : "❌ FALHOU"}`,
+      autoFixed: false,
+      message: `SISTEMA FORA DO AR — poll parado há ${Math.round(ageMin)} min e auto-restart FALHOU`,
     };
   }
 
@@ -140,13 +141,13 @@ async function checkMariaStuck(): Promise<CheckResult> {
     }
   }
 
-  if (stuckCount === 0) return { type: "maria_stuck", ok: true };
+  if (stuckCount < 3) return { type: "maria_stuck", ok: true }; // 1-2 leads = caso isolado, não é queda
 
   const extra = stuckCount > 3 ? ` (+${stuckCount - 3} outros)` : "";
   return {
     type: "maria_stuck",
     ok: false,
-    message: `Maria sem responder ${stuckCount} lead(s) há +30min: ${stuckNames.join(", ")}${extra}`,
+    message: `SISTEMA DEGRADADO — Maria sem responder ${stuckCount} leads há +30min: ${stuckNames.join(", ")}${extra}`,
   };
 }
 
@@ -189,7 +190,7 @@ async function runMonitor() {
   const results = await Promise.all([
     checkPoll(),
     checkMariaStuck(),
-    checkAgendamentos(),
+    // checkAgendamentos() removido — "sem agendamento na última hora" não é queda de sistema
   ]);
 
   const failed = results.filter(r => !r.ok);
@@ -198,7 +199,7 @@ async function runMonitor() {
   // Coleta quais issues precisam de alerta (single-pass para evitar race com cooldown)
   const toAlert: CheckResult[] = [];
   for (const r of failed) {
-    const alerted = await wasAlertedRecently(r.type, 60);
+    const alerted = await wasAlertedRecently(r.type, 360); // re-alerta no máx a cada 6h
     if (!alerted && r.message) toAlert.push(r);
   }
 
