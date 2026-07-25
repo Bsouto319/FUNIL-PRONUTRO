@@ -2,9 +2,10 @@ name: Pronutro Poll Safety Net
 
 on:
   schedule:
-    # A cada 5 minutos — garante que nenhuma mensagem fique presa
-    # se o webhook do WhatsApp não disparar de novo (ex: lock ocupado, falha de entrega)
-    - cron: "*/5 * * * *"
+    # Reduzido pra economizar recurso — funil-pronutro é baixa prioridade (pouco uso,
+    # sem receita). O pg_cron do proprio Supabase ja cobre a cada 15min; isso aqui
+    # e so rede de seguranca extra, de vez em quando.
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 jobs:
