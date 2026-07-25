@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://btechsoutoshop.uazapi.com";
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
-const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const OPENAI_KEY   = Deno.env.get("OPENAI_KEY") || "";
 const ALERT_PHONE  = "5561982025951";
@@ -156,13 +156,10 @@ async function toolUpdateLeadStage(leadId: string, stage: string): Promise<objec
 // Alerta pro Bruno sempre pelo WhatsApp da BTech, não pelo da ProNutro
 const ALERT_TOKEN = Deno.env.get("UAZAPI_ALERT_TOKEN") || UAZAPI_TOKEN;
 
+// Bruno pediu pra tirar notificacao de WhatsApp pra ele — so loga, ele confere pelo Claude Code.
 async function toolNotifyOwner(message: string): Promise<object> {
-  await fetch(`${UAZAPI_URL}/send/text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", token: ALERT_TOKEN },
-    body: JSON.stringify({ number: ALERT_PHONE, text: message }),
-  }).catch(() => {});
-  return { sent: true };
+  console.log("[notify owner suprimido, so log]", message);
+  return { sent: false, suppressed: true };
 }
 
 async function executeTool(name: string, args: any): Promise<string> {

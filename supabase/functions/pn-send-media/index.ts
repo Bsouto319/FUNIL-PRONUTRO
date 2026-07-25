@@ -3,7 +3,7 @@ import { logAudit } from "../_shared/audit.ts";
 
 const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://btechsoutoshop.uazapi.com";
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
-const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const CORS = {

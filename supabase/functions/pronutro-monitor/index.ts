@@ -4,7 +4,7 @@ import { logAudit } from "../_shared/audit.ts";
 
 const UAZAPI_URL   = Deno.env.get("UAZAPI_URL")   || "https://btechsoutoshop.uazapi.com";
 const UAZAPI_TOKEN = Deno.env.get("UAZAPI_TOKEN") || "";
-const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const ALERT_PHONE  = "5561982025951";
 const POLL_URL     = `${SUPABASE_URL}/functions/v1/pronutro-poll`;
@@ -28,12 +28,10 @@ function isBusinessHours(): boolean {
 // (o paciente não pode ver notificação de sistema saindo do número da clínica)
 const ALERT_TOKEN = Deno.env.get("UAZAPI_ALERT_TOKEN") || UAZAPI_TOKEN;
 
+// Bruno pediu pra tirar o alerta de WhatsApp pra ele — fica só logado (audit_logs/console),
+// ele confere pelo Claude Code quando quiser, não quer mais notificacao de status/erro no WhatsApp.
 async function sendAlert(text: string): Promise<void> {
-  await fetch(`${UAZAPI_URL}/send/text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", token: ALERT_TOKEN },
-    body: JSON.stringify({ number: ALERT_PHONE, text }),
-  }).catch(e => console.error("sendAlert failed:", e));
+  console.log("[alert suprimido, so log]", text);
 }
 
 async function wasAlertedRecently(type: string, cooldownMin = 60): Promise<boolean> {

@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logAudit } from "../_shared/audit.ts";
 
 const UAZAPI_URL   = Deno.env.get("UAZAPI_URL") || "https://btechsoutoshop.uazapi.com";
-const SUPABASE_URL = "https://pvphgusjofufwtyiyviu.supabase.co";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const OPENAI_KEY   = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY") || "";
 
@@ -545,13 +545,28 @@ async function runPollForClinic(cfg: any) {
       });
     }
 
+    // So exclui grupo/dono/reacao — mensagem sem conteudo reconhecido AINDA ENTRA (com corpo
+    // placeholder), pra garantir que sempre cria/atualiza o lead no Kanban. So "no_message"
+    // (payload nem tem chatid/timestamp) e genuinamente irrecuperavel.
     const newMsgs = all.filter((m: any) => {
       const ts = toMs(m.messageTimestamp);
-      const hasContent = m.text || m.content?.text || m.body || m.content?.URL || MEDIA_TYPES.includes(m.messageType);
       return ts > lastTs && !m.isGroup && m.chatid &&
         !m.chatid.startsWith(ownerJid + ":") &&
-        hasContent && m.messageType !== "ReactionMessage";
+        m.messageType !== "ReactionMessage";
     });
+
+    // So pra log/visibilidade — mensagens sem conteudo reconhecido que ENTRARAM mesmo assim.
+    const semConteudo = newMsgs.filter((m: any) => {
+      const hasContent = m.text || m.content?.text || m.body || m.content?.URL || MEDIA_TYPES.includes(m.messageType);
+      return !hasContent;
+    });
+    for (const m of semConteudo) {
+      await logAudit({
+        action: "WEBHOOK_MESSAGE_SKIPPED", severity: "warning",
+        user_phone: m.chatid?.split("@")[0],
+        metadata: { clinic: slug, reason: "no_content_mas_lead_criado", messageType: m.messageType, raw_msg: JSON.stringify(m).slice(0, 2000) },
+      });
+    }
 
     console.log(`pronutro-poll[${slug}] v33: lastTs=${lastTs} total=${all.length} new=${newMsgs.length} maria=${mariaActive}`);
 
@@ -559,12 +574,6 @@ async function runPollForClinic(cfg: any) {
       await db.from("pn_poll_state").upsert({ clinic_slug: slug, last_poll_at: now }, { onConflict: "clinic_slug" });
       return { slug, processed: 0 };
     }
-
-    const maxTs = Math.max(...all.map((m: any) => toMs(m.messageTimestamp)), lastTs);
-    await db.from("pn_poll_state").upsert(
-      { clinic_slug: slug, last_poll_at: now, last_message_timestamp: maxTs },
-      { onConflict: "clinic_slug" }
-    );
 
     const byChat = new Map<string, any[]>();
     for (const m of newMsgs) {
@@ -575,6 +584,10 @@ async function runPollForClinic(cfg: any) {
 
     let processed = 0;
     let chatErrors = 0;
+    const maxTs = Math.max(...all.map((m: any) => toMs(m.messageTimestamp)), lastTs);
+    // Cursor só avança até onde deu certo — se algum chat falhar, o próximo poll
+    // reprocessa a partir do mais antigo que falhou (idempotente: pn_mensagens dedupe por external_id).
+    let minFailedTs = Infinity;
 
     for (const [chatid, msgs] of byChat.entries()) {
      try {
@@ -616,7 +629,8 @@ async function runPollForClinic(cfg: any) {
       }
 
       const senderName = inboundMsgs[0]?.senderName ?? inboundMsgs[0]?.pushName ?? null;
-      const firstBody  = inboundMsgs[0]?.text ?? inboundMsgs[0]?.content?.text ?? inboundMsgs[0]?.body ?? "";
+      const firstBody  = inboundMsgs[0]?.text ?? inboundMsgs[0]?.content?.text ?? inboundMsgs[0]?.body
+        ?? (inboundMsgs[0]?.messageType ? `[${inboundMsgs[0].messageType}]` : "[mensagem sem conteudo reconhecido]");
 
       const { data: existingLead } = await db.from("pn_leads").select("*").eq("phone", phone).eq("clinic_slug", slug).maybeSingle();
       const isNew = !existingLead;
@@ -636,16 +650,32 @@ async function runPollForClinic(cfg: any) {
         upsertData.first_message = firstBody.slice(0, 500);
         upsertData.ai_mode       = mariaActive;
         upsertData.name          = senderName || null;
-        const { data: newLead } = await db.from("pn_leads").insert(upsertData).select("*").single();
-        lead = newLead;
-        await logAudit({
-          action: "LEAD_CREATED",
-          table_name: "pn_leads",
-          record_id: lead?.id,
-          user_phone: phone,
-          severity: "info",
-          metadata: { clinic: slug, name: senderName, ai_mode: mariaActive, first_message: firstBody.slice(0, 100) },
-        });
+        const { data: newLead, error: insertErr } = await db.from("pn_leads").insert(upsertData).select("*").single();
+        if (insertErr) {
+          if (insertErr.code === "23505") {
+            // Corrida: webhook em tempo real (pn-agent) ou outra execução do poll já criou o lead.
+            const { data: raceLead } = await db.from("pn_leads")
+              .select("*").eq("phone", phone).eq("clinic_slug", slug).maybeSingle();
+            lead = raceLead;
+          } else {
+            console.error(`pronutro-poll[${slug}]: falha ao criar lead ${phone}:`, insertErr);
+            await logAudit({
+              action: "LEAD_CREATE_FAILED", table_name: "pn_leads",
+              user_phone: phone, severity: "error",
+              metadata: { clinic: slug, error: insertErr.message, name: senderName },
+            });
+          }
+        } else {
+          lead = newLead;
+          await logAudit({
+            action: "LEAD_CREATED",
+            table_name: "pn_leads",
+            record_id: lead?.id,
+            user_phone: phone,
+            severity: "info",
+            metadata: { clinic: slug, name: senderName, ai_mode: mariaActive, first_message: firstBody.slice(0, 100) },
+          });
+        }
       } else {
         await db.from("pn_leads").update(upsertData).eq("id", existingLead.id);
         lead = { ...existingLead, ...upsertData };
@@ -655,7 +685,7 @@ async function runPollForClinic(cfg: any) {
       for (const m of inboundMsgs) {
         const rawBody  = m.text || m.content?.text || m.content?.caption || m.body || "";
         const mType    = getMediaType(m.messageType);
-        const body     = rawBody || (mType ? `[${mType}]` : "");
+        const body     = rawBody || (mType ? `[${mType}]` : (m.messageType ? `[${m.messageType}]` : "[mensagem sem conteudo reconhecido]"));
         const eid      = m.messageid || m.id;
         if (!eid) continue;
         const mediaUrl = mType ? await resolveMediaUrl(token, eid) : null;
@@ -696,6 +726,8 @@ async function runPollForClinic(cfg: any) {
       processed++;
      } catch (chatErr) {
       chatErrors++;
+      const chatMinTs = Math.min(...msgs.map((m: any) => toMs(m.messageTimestamp)));
+      if (chatMinTs < minFailedTs) minFailedTs = chatMinTs;
       console.error(`pronutro-poll[${slug}]: erro processando chat ${chatid}:`, chatErr);
       await logAudit({
         action: "POLL_CHAT_ERROR", severity: "error",
@@ -703,6 +735,12 @@ async function runPollForClinic(cfg: any) {
       });
      }
     }
+
+    const newCursor = chatErrors > 0 ? minFailedTs - 1 : maxTs;
+    await db.from("pn_poll_state").upsert(
+      { clinic_slug: slug, last_poll_at: now, last_message_timestamp: newCursor },
+      { onConflict: "clinic_slug" }
+    );
 
     return { slug, processed, chatErrors, newMessages: newMsgs.length };
   } finally {
