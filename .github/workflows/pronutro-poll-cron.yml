@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Chama a função pronutro-poll
         run: |
-          curl -sf -X POST "https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pronutro-poll" \
+          curl -sf -X POST "https://utbvjbltoycvczsfvouz.supabase.co/functions/v1/pronutro-poll" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Content-Type: application/json" \
