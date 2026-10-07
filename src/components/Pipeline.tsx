@@ -165,12 +165,12 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
               </span>
             )}
             {semAtend && !isNew && (
-              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-[#fdecec] text-[#b91c1c] border border-[#f3c2c2] animate-pulse">
                 ⚠
               </span>
             )}
             {mariaAtiva && !isNew && (
-              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-violet-500/25 text-violet-300 border border-violet-500/50 animate-pulse">
+              <span className="text-[8px] font-black px-1 py-0.5 rounded-full bg-[#f1ecfd] text-[#7c3aed] border border-[#d9cdfa] animate-pulse">
                 🤖
               </span>
             )}
@@ -190,8 +190,8 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
               className="text-[8px] font-black px-1 py-0.5 rounded-full border truncate shrink-0 max-w-[60px]"
               style={
                 lead.last_sender_nome === "Maria IA"
-                  ? { background: "rgba(109,40,217,0.15)", color: "#c4b5fd", borderColor: "rgba(139,92,246,0.3)" }
-                  : { background: "rgba(5,150,105,0.15)", color: "#6ee7b7", borderColor: "rgba(16,185,129,0.3)" }
+                  ? { background: "#f1ecfd", color: "#7c3aed", borderColor: "#d9cdfa" }
+                  : { background: "#e3f6ee", color: "#059669", borderColor: "#bfe3cc" }
               }
             >
               {lead.last_sender_nome === "Maria IA" ? "🤖" : "💬"} {lead.last_sender_nome.split(" ")[0]}
@@ -239,8 +239,8 @@ function LeadCard({ lead, stageKey, stageColor, onSelect, onToggleAi, onDragStar
               <span
                 className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-full"
                 style={{
-                  backgroundColor: lead.score >= 70 ? "#22c55e22" : lead.score >= 40 ? "#f59e0b22" : "#ef444422",
-                  color:           lead.score >= 70 ? "#4ade80"   : lead.score >= 40 ? "#fbbf24"   : "#f87171",
+                  backgroundColor: lead.score >= 70 ? "#e3f6ee" : lead.score >= 40 ? "#fef3e0" : "#fdecec",
+                  color:           lead.score >= 70 ? "#059669" : lead.score >= 40 ? "#b45309" : "#b91c1c",
                 }}
               >
                 {lead.score}%

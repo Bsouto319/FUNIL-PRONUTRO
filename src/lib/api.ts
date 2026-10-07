@@ -16,16 +16,19 @@ export function getClinicSlug() { return _clinicSlug; }
 export function getClinicName() { return _clinicName; }
 export function getAgentName()  { return _agentName; }
 
+// Paleta única "da casa" (navy) em todo o board -- igual padrão adotado no LeadPilot/SellPilot.
+const KANBAN_HEADER = "#1f3864";
+
 // kanban: true = aparece como coluna no Kanban | false = só no seletor de stage
 export const STAGES = [
-  { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: "#0284c7", kanban: true  },
-  { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: "#be185d", kanban: true  },
-  { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: "#0d9488", kanban: true  },
-  { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: "#ca8a04", kanban: true  },
-  { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: "#7c3aed", kanban: true  },
-  { key: "lista_espera",   label: "⏳ Lista de Espera", color: "bg-orange-400/15 text-orange-300", headerBg: "#ea580c", kanban: false },
-  { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: "#059669", kanban: true  },
-  { key: "resolvido",      label: "✅ Resolvido",    color: "bg-indigo-400/15 text-indigo-300",   headerBg: "#4f46e5", kanban: true  },
+  { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "lista_espera",   label: "⏳ Lista de Espera", color: "bg-orange-400/15 text-orange-300", headerBg: KANBAN_HEADER, kanban: false },
+  { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "resolvido",      label: "✅ Resolvido",    color: "bg-indigo-400/15 text-indigo-300",   headerBg: KANBAN_HEADER, kanban: true  },
 ];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
