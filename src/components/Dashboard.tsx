@@ -880,7 +880,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
                 {dayFilter && (
                   <button
                     onClick={() => setDayFilter(null)}
-                    className="text-[10px] text-white/30 hover:text-white/60 font-black transition"
+                    className="text-[10px] text-slate-400 hover:text-slate-600 font-black transition"
                     title="Limpar filtro"
                   >
                     ✕ limpar
