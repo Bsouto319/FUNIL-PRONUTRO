@@ -1581,27 +1581,27 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
   const previewRows  = showImport ? buildPreviewRows() : [];
 
   return (
-    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="h-full overflow-y-auto px-4 sm:px-6 py-4 space-y-5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
 
       {/* Lembrete de Cobrança */}
       {pendentes.length > 0 && (
-        <div className="rounded-xl border border-amber-500/25 overflow-hidden" style={{ background: "rgba(245,158,11,0.06)" }}>
+        <div className="rounded-xl border border-amber-200 overflow-hidden" style={{ background: "#fffbeb" }}>
           <button
             onClick={() => setShowPendentes(v => !v)}
             className="w-full flex items-center justify-between px-4 py-2.5 text-left"
           >
             <div className="flex items-center gap-2">
               <span className="text-sm">⚠️</span>
-              <span className="text-amber-300 text-xs font-black">Lembrete de Cobrança</span>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <span className="text-amber-700 text-xs font-black">Lembrete de Cobrança</span>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
                 {pendentes.length} consulta{pendentes.length !== 1 ? "s" : ""} nos últimos 14 dias
               </span>
             </div>
-            <span className="text-amber-400/50 text-xs">{showPendentes ? "▲" : "▼"}</span>
+            <span className="text-amber-500 text-xs">{showPendentes ? "▲" : "▼"}</span>
           </button>
 
           {showPendentes && (
-            <div className="border-t border-amber-500/15 divide-y divide-white/5">
+            <div className="border-t border-amber-200 divide-y divide-amber-100">
               {pendentes.map(ag => {
                 const nome   = ag.nome_paciente || ag.lead?.name || "—";
                 const fone   = ag.telefone_paciente || ag.lead?.phone || "";
@@ -1611,24 +1611,24 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                 const diasAtras = Math.floor((Date.now() - d.getTime()) / 86400000);
                 return (
                   <div key={ag.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0 text-amber-400 font-black text-xs">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 font-black text-xs">
                       {nome[0]?.toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white/80 text-xs font-bold truncate">{nome}</p>
-                      <p className="text-white/35 text-[10px]">{medico} · {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · {diasAtras === 0 ? "hoje" : `${diasAtras}d atrás`}</p>
+                      <p className="text-slate-700 text-xs font-bold truncate">{nome}</p>
+                      <p className="text-slate-400 text-[10px]">{medico} · {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} · {diasAtras === 0 ? "hoje" : `${diasAtras}d atrás`}</p>
                     </div>
                     {valor && (
-                      <span className="text-emerald-400 font-black text-xs shrink-0">
+                      <span className="text-emerald-600 font-black text-xs shrink-0">
                         {Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </span>
                     )}
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${ag.status === "realizado" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/20 text-amber-400 border border-amber-500/30"}`}>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${ag.status === "realizado" ? "bg-emerald-100 text-emerald-700 border border-emerald-300" : "bg-amber-100 text-amber-700 border border-amber-300"}`}>
                       {ag.status === "realizado" ? "REALIZADO" : "AGENDADO"}
                     </span>
                     {fone && (
                       <a href={`https://wa.me/${fone}`} target="_blank" rel="noreferrer"
-                        className="shrink-0 text-[10px] text-emerald-400/60 hover:text-emerald-300 transition">WA</a>
+                        className="shrink-0 text-[10px] text-emerald-600 hover:text-emerald-700 transition">WA</a>
                     )}
                   </div>
                 );
@@ -1641,20 +1641,20 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {statCards.map(({ label, value, icon: Icon, color, shadow }) => (
-          <div key={label} className="rounded-xl border border-white/10 p-3.5 flex items-center gap-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+          <div key={label} className="rounded-xl border border-slate-200 p-3.5 flex items-center gap-3 bg-white shadow-sm">
             <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg ${shadow} shrink-0`}>
               <Icon size={16} className="text-white" />
             </div>
             <div className="min-w-0">
-              <p className="text-white font-black text-base leading-none truncate">{loading ? "–" : value}</p>
-              <p className="text-white/40 text-[9px] font-bold uppercase tracking-wider mt-0.5 leading-tight">{label}</p>
+              <p className="text-slate-800 font-black text-base leading-none truncate">{loading ? "–" : value}</p>
+              <p className="text-slate-400 text-[9px] font-bold uppercase tracking-wider mt-0.5 leading-tight">{label}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Filtros + Ações */}
-      <div className="rounded-xl border border-white/10 p-3 space-y-2.5" style={{ background: "rgba(255,255,255,0.03)" }}>
+      <div className="rounded-xl border border-slate-200 p-3 space-y-2.5 bg-white shadow-sm">
 
         {/* Row 1: period presets + always-visible pickers + actions */}
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1666,19 +1666,19 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           ] as { mode: PeriodoMode; label: string }[]).map(({ mode, label }) => (
             <button key={mode}
               onClick={() => { setPeriodoMode(mode); setDataInicio(""); setDataFim(""); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition border ${periodoMode === mode && periodoMode !== "mes_especifico" && periodoMode !== "intervalo" ? "bg-emerald-600 border-emerald-500 text-white" : "bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10"}`}>
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition border ${periodoMode === mode && periodoMode !== "mes_especifico" && periodoMode !== "intervalo" ? "bg-emerald-600 border-emerald-500 text-white" : "bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100"}`}>
               {label}
             </button>
           ))}
 
-          <div className="w-px h-5 bg-white/10 mx-0.5" />
+          <div className="w-px h-5 bg-slate-200 mx-0.5" />
 
           {/* Month picker — always visible */}
           <input type="month" value={mesAno}
             onChange={e => { setMesAno(e.target.value); setPeriodoMode("mes_especifico"); setDataInicio(""); setDataFim(""); }}
             title="Mês específico"
-            style={{ colorScheme: "dark" }}
-            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 transition ${periodoMode === "mes_especifico" ? "bg-emerald-600/20 border-emerald-500/50 text-emerald-300" : "bg-white/5 border-white/10 text-white/50"}`}
+            style={{ colorScheme: "light" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 transition ${periodoMode === "mes_especifico" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-slate-50 border-slate-200 text-slate-500"}`}
           />
 
           {/* Date range — always visible */}
@@ -1686,31 +1686,31 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
             onChange={e => { setDataInicio(e.target.value); setPeriodoMode("intervalo"); }}
             placeholder="De"
             title="Data início"
-            style={{ colorScheme: "dark" }}
-            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataInicio ? "bg-sky-600/20 border-sky-500/50 text-sky-300" : "bg-white/5 border-white/10 text-white/40"}`}
+            style={{ colorScheme: "light" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataInicio ? "bg-sky-50 border-sky-300 text-sky-700" : "bg-slate-50 border-slate-200 text-slate-400"}`}
           />
           <input type="date" value={dataFim}
             onChange={e => { setDataFim(e.target.value); setPeriodoMode("intervalo"); }}
             placeholder="Até"
             title="Data fim"
-            style={{ colorScheme: "dark" }}
-            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataFim ? "bg-sky-600/20 border-sky-500/50 text-sky-300" : "bg-white/5 border-white/10 text-white/40"}`}
+            style={{ colorScheme: "light" }}
+            className={`px-2.5 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40 transition ${periodoMode === "intervalo" && dataFim ? "bg-sky-50 border-sky-300 text-sky-700" : "bg-slate-50 border-slate-200 text-slate-400"}`}
           />
           {(dataInicio || dataFim) && (
             <button onClick={() => { setDataInicio(""); setDataFim(""); setPeriodoMode("mes_atual"); }}
-              className="text-white/30 hover:text-white/60 transition" title="Limpar datas">
+              className="text-slate-400 hover:text-slate-600 transition" title="Limpar datas">
               <X size={12} />
             </button>
           )}
 
           <div className="ml-auto flex items-center gap-2">
             <button onClick={handleClearAll} disabled={filtered.length === 0 || clearingAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/15 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-black transition disabled:opacity-30"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-700 text-xs font-black transition disabled:opacity-30"
               title="Apagar todos os lançamentos do período atual">
               <Trash2 size={12} /> {clearingAll ? "Apagando..." : "Limpar tudo"}
             </button>
             <button onClick={exportCSV} disabled={filtered.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition disabled:opacity-30">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-800 text-xs font-bold transition disabled:opacity-30">
               <Download size={12} /> CSV
             </button>
             <button
@@ -1741,22 +1741,22 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
 
           {/* Unified search bar */}
           <div className="relative flex-1 min-w-[260px]">
-            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               value={busca}
               onChange={e => { setBusca(e.target.value); if (gptResult && !e.target.value.trim()) setGptResult(null); }}
               onKeyDown={e => { if (e.key === "Enter") handleSmartSearch(); }}
               placeholder='Paciente, pix, "acima de 500 em março"... ↵'
-              className={`w-full pl-8 pr-16 py-1.5 rounded-lg border text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 transition ${gptResult ? "bg-violet-500/10 border-violet-500/35 focus:ring-violet-500/50" : "bg-white/5 border-white/10 focus:ring-emerald-500/40"}`}
+              className={`w-full pl-8 pr-16 py-1.5 rounded-lg border text-slate-800 text-xs placeholder-slate-400 focus:outline-none focus:ring-1 transition ${gptResult ? "bg-violet-50 border-violet-300 focus:ring-violet-500/50" : "bg-slate-50 border-slate-200 focus:ring-emerald-500/40"}`}
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
               {busca && (
-                <button onClick={() => { setBusca(""); setGptResult(null); }} className="text-white/25 hover:text-white/60 transition">
+                <button onClick={() => { setBusca(""); setGptResult(null); }} className="text-slate-300 hover:text-slate-600 transition">
                   <X size={10} />
                 </button>
               )}
               <button onClick={handleSmartSearch} title="Busca inteligente (Enter)"
-                className={`text-[10px] transition ${gptResult ? "text-violet-400" : "text-white/20 hover:text-white/50"}`}>
+                className={`text-[10px] transition ${gptResult ? "text-violet-500" : "text-slate-300 hover:text-slate-500"}`}>
                 🤖
               </button>
             </div>
@@ -1764,16 +1764,16 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
 
           {/* Médico */}
           <select value={medicoFiltro} onChange={e => setMedicoFiltro(e.target.value)}
-            style={{ colorScheme: "dark" }}
-            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+            style={{ colorScheme: "light" }}
+            className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none">
             <option value="">Todos médicos</option>
             {medicos.map(m => <option key={m.id} value={m.id}>{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</option>)}
           </select>
 
           {/* Forma */}
           <select value={formaFiltro} onChange={e => setFormaFiltro(e.target.value)}
-            style={{ colorScheme: "dark" }}
-            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+            style={{ colorScheme: "light" }}
+            className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none">
             <option value="">Todas formas</option>
             {FORMAS.map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
           </select>
@@ -1781,26 +1781,26 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           {/* Valor range */}
           <input type="number" min="0" value={valorMin} onChange={e => setValorMin(e.target.value)}
             placeholder="R$ mín"
-            className="w-20 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+            className="w-20 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
           <input type="number" min="0" value={valorMax} onChange={e => setValorMax(e.target.value)}
             placeholder="R$ máx"
-            className="w-20 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+            className="w-20 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
 
           {/* Incompletos toggle */}
           <button onClick={() => setSomenteIncompletos(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition ${somenteIncompletos ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-white/5 border-white/10 text-white/40 hover:text-white"}`}>
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition ${somenteIncompletos ? "bg-amber-100 border-amber-300 text-amber-700" : "bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-800"}`}>
             <AlertTriangle size={11} /> Incompletos
           </button>
 
-          <span className="text-white/30 text-xs ml-auto">{filtered.length} reg.</span>
+          <span className="text-slate-400 text-xs ml-auto">{filtered.length} reg.</span>
         </div>
 
         {/* AI filter active label */}
         {gptResult && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200">
             <span className="text-[11px]">🤖</span>
-            <span className="text-violet-300 text-xs font-semibold">{gptResult.descricao}</span>
-            <button onClick={() => { setGptResult(null); setBusca(""); }} className="ml-auto text-white/25 hover:text-white/60 transition">
+            <span className="text-violet-700 text-xs font-semibold">{gptResult.descricao}</span>
+            <button onClick={() => { setGptResult(null); setBusca(""); }} className="ml-auto text-slate-300 hover:text-slate-600 transition">
               <X size={11} />
             </button>
           </div>
@@ -1808,21 +1808,21 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
       </div>
 
       {/* ── Tabela de Transações — full width ── */}
-      <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide">Lançamentos</h3>
-            <span className="text-[10px] text-white/30 font-bold">{filtered.length} registros</span>
+            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wide">Lançamentos</h3>
+            <span className="text-[10px] text-slate-400 font-bold">{filtered.length} registros</span>
           </div>
-          {busca && <span className="text-xs text-emerald-400/70">filtrado: "{busca}"</span>}
+          {busca && <span className="text-xs text-emerald-600">filtrado: "{busca}"</span>}
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-white/30 text-sm">Carregando...</div>
+          <div className="py-16 text-center text-slate-400 text-sm">Carregando...</div>
         ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-white/20 text-sm">Nenhuma transação encontrada</div>
+          <div className="py-16 text-center text-slate-300 text-sm">Nenhuma transação encontrada</div>
         ) : (
-          <div className="overflow-x-auto overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div className="overflow-x-auto overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
             <table className="w-full text-xs min-w-[1180px]">
               <thead className="sticky top-0 z-10" style={{ background: "rgba(14,26,70,0.97)" }}>
                 <tr className="border-b border-white/8">
@@ -1867,7 +1867,7 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                   const tipo   = t.tipo_servico || "consulta";
                   const isSelected = selectedIds.has(t.id);
                   return (
-                    <tr key={t.id} className={`border-b border-white/[0.04] transition group ${isSelected ? "bg-violet-500/8" : "hover:bg-white/[0.03]"}`}>
+                    <tr key={t.id} className={`border-b border-slate-100 transition group ${isSelected ? "bg-violet-50" : "hover:bg-slate-50"}`}>
                       <td className="px-3 py-2.5 w-8">
                         <button
                           onClick={() => setSelectedIds(prev => {
@@ -1875,90 +1875,90 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                             next.has(t.id) ? next.delete(t.id) : next.add(t.id);
                             return next;
                           })}
-                          className="text-white/30 hover:text-violet-400 transition flex items-center">
+                          className="text-slate-300 hover:text-violet-500 transition flex items-center">
                           {isSelected
-                            ? <CheckSquare size={13} className="text-violet-400" />
+                            ? <CheckSquare size={13} className="text-violet-500" />
                             : <Square size={13} />}
                         </button>
                       </td>
-                      <td className="px-3 py-2.5 text-white/50 whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
                         {t.data_venda ? fmtDate(t.data_venda) : (t.data_pagamento ? fmtDate(t.data_pagamento) : "—")}
                       </td>
-                      <td className="px-3 py-2.5 text-white/40 whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">
                         {t.data_pagamento ? fmtDate(t.data_pagamento) : "—"}
                       </td>
-                      <td className="px-3 py-2.5 text-white/35 whitespace-nowrap capitalize">{mes}</td>
+                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap capitalize">{mes}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${TIPO_STYLE[tipo] || "bg-white/10 text-white/40 border-white/15"}`}>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${TIPO_STYLE[tipo] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                           {tipo.toUpperCase()}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {t.forma_pagamento ? (
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${FORMA_STYLE[t.forma_pagamento] || "bg-white/10 text-white/50 border-white/20"}`}>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${FORMA_STYLE[t.forma_pagamento] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                             {t.forma_pagamento.toUpperCase()}
                           </span>
-                        ) : <span className="text-white/20">—</span>}
+                        ) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-3 py-2.5 max-w-[140px]">
                         {t.nome_paciente ? (
                           <button onClick={() => setPaciente(t.nome_paciente)}
-                            className="text-white/80 font-semibold hover:text-emerald-300 hover:underline text-left truncate max-w-full flex items-center gap-1 group/pac">
+                            className="text-slate-700 font-semibold hover:text-emerald-600 hover:underline text-left truncate max-w-full flex items-center gap-1 group/pac">
                             <span className="truncate">{t.nome_paciente}</span>
-                            <ChevronRight size={9} className="shrink-0 opacity-0 group-hover/pac:opacity-100 text-emerald-400" />
+                            <ChevronRight size={9} className="shrink-0 opacity-0 group-hover/pac:opacity-100 text-emerald-600" />
                           </button>
-                        ) : <span className="text-white/20">—</span>}
+                        ) : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-white/35 whitespace-nowrap font-mono text-[10px]">
-                        {t.cpf_paciente || <span className="text-white/15">—</span>}
+                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap font-mono text-[10px]">
+                        {t.cpf_paciente || <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-white/50 max-w-[120px] truncate whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-slate-500 max-w-[120px] truncate whitespace-nowrap">
                         {(t.medico_nome || "—").replace(/^(Dr\.|Dra\.) /, "")}
                       </td>
-                      <td className="px-3 py-2.5 text-white/40 whitespace-nowrap text-[10px]">
-                        {[t.banco, t.bandeira && `${t.bandeira}${t.parcelas > 1 ? ` ${t.parcelas}x` : ""}`].filter(Boolean).join(" · ") || <span className="text-white/15">—</span>}
+                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap text-[10px]">
+                        {[t.banco, t.bandeira && `${t.bandeira}${t.parcelas > 1 ? ` ${t.parcelas}x` : ""}`].filter(Boolean).join(" · ") || <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                        <span className="text-emerald-400 font-black">{fmt(bruto)}</span>
+                        <span className="text-emerald-600 font-black">{fmt(bruto)}</span>
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
                         {saida > 0
-                          ? <span className="text-rose-400/80 font-bold">({fmt(saida)})</span>
-                          : <span className="text-white/15">—</span>}
+                          ? <span className="text-rose-500 font-bold">({fmt(saida)})</span>
+                          : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-center whitespace-nowrap">
                         {t.parcelas > 1
-                          ? <span className="text-violet-300 font-black text-[10px]">{t.parcelas}x</span>
-                          : <span className="text-white/20 text-[10px]">1x</span>}
+                          ? <span className="text-violet-600 font-black text-[10px]">{t.parcelas}x</span>
+                          : <span className="text-slate-300 text-[10px]">1x</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                        <span className={`font-black ${saida > 0 ? "text-sky-300" : "text-emerald-400"}`}>{fmt(final)}</span>
+                        <span className={`font-black ${saida > 0 ? "text-sky-600" : "text-emerald-600"}`}>{fmt(final)}</span>
                       </td>
-                      <td className="px-3 py-2.5 text-white/35 max-w-[160px] truncate text-[11px]">
-                        {t.observacoes || <span className="text-white/15">—</span>}
+                      <td className="px-3 py-2.5 text-slate-400 max-w-[160px] truncate text-[11px]">
+                        {t.observacoes || <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-2 py-2.5 text-center">
-                        <span className="text-white/15 text-[10px]">—</span>
+                        <span className="text-slate-300 text-[10px]">—</span>
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <button onClick={() => handleTogglePago(t)} disabled={togglingPagoId === t.id}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black transition border disabled:opacity-40 ${t.pago ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30" : "bg-white/5 border-white/10 text-white/30 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:text-emerald-400"}`}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black transition border disabled:opacity-40 ${t.pago ? "bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200" : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700"}`}
                             title={t.pago ? "Marcar como não pago" : "Marcar como pago"}>
                             <CheckCircle size={10} /> {t.pago ? "Pago" : "Pagar"}
                           </button>
                           <button onClick={() => setReciboTx(t)}
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 text-[10px] font-black transition border border-sky-500/25"
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-[10px] font-black transition border border-sky-200"
                             title="Emitir Recibo">
                             <FileText size={10} /> Recibo
                           </button>
                           <button onClick={() => handleEdit(t)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-amber-500/20 text-white/30 hover:text-amber-400 transition"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-amber-100 text-slate-300 hover:text-amber-700 transition"
                             title="Editar">
                             <Pencil size={11} />
                           </button>
                           <button onClick={() => handleDelete(t.id)} disabled={deletingId === t.id}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 text-white/30 hover:text-rose-400 transition disabled:opacity-30"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-100 text-slate-300 hover:text-rose-700 transition disabled:opacity-30"
                             title="Excluir">
                             <Trash2 size={11} />
                           </button>
@@ -1994,10 +1994,10 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
           {/* Receita por Médico */}
-          <div className="lg:col-span-2 rounded-xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide mb-4">Receita por Médico</h3>
+          <div className="lg:col-span-2 rounded-xl border border-slate-200 p-5 bg-white shadow-sm">
+            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-4">Receita por Médico</h3>
             {byMedico.length === 0 ? (
-              <p className="text-white/20 text-xs py-4 text-center">Nenhum dado de médico no período</p>
+              <p className="text-slate-300 text-xs py-4 text-center">Nenhum dado de médico no período</p>
             ) : (
               <div className="space-y-4">
                 {byMedico.map((m, idx) => {
@@ -2011,15 +2011,15 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${barColor} shrink-0`} />
-                          <span className="text-white/80 font-bold text-sm truncate">{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</span>
+                          <span className="text-slate-700 font-bold text-sm truncate">{m.nome.replace(/^(Dr\.|Dra\.) /, "")}</span>
                         </div>
                         <div className="flex items-center gap-4 shrink-0 ml-3">
-                          <span className="text-white/30 text-[10px]">{qtd} atend. · ticket {fmt(ticket)}</span>
-                          <span className="text-white/40 text-[11px] font-bold w-8 text-right">{pct}%</span>
-                          <span className="text-emerald-400 font-black text-sm w-24 text-right">{fmt(m.total)}</span>
+                          <span className="text-slate-400 text-[10px]">{qtd} atend. · ticket {fmt(ticket)}</span>
+                          <span className="text-slate-500 text-[11px] font-bold w-8 text-right">{pct}%</span>
+                          <span className="text-emerald-600 font-black text-sm w-24 text-right">{fmt(m.total)}</span>
                         </div>
                       </div>
-                      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all`}
                           style={{ width: `${(m.total / maxVal) * 100}%` }} />
                       </div>
@@ -2030,14 +2030,14 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
             )}
 
             {/* DRE simplificado */}
-            <div className="mt-5 pt-4 border-t border-white/8 grid grid-cols-3 gap-3">
+            <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 gap-3">
               {[
-                { label: "Receita Bruta",   value: total,        color: "text-emerald-400" },
-                { label: "(-) Deduções",    value: -totalDeducoes, color: "text-rose-400"  },
-                { label: "(=) Líquido",     value: totalLiquido, color: "text-sky-300"     },
+                { label: "Receita Bruta",   value: total,        color: "text-emerald-600" },
+                { label: "(-) Deduções",    value: -totalDeducoes, color: "text-rose-600"  },
+                { label: "(=) Líquido",     value: totalLiquido, color: "text-sky-600"     },
               ].map(c => (
-                <div key={c.label} className="rounded-lg p-3 border border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
-                  <p className="text-white/35 text-[9px] font-bold uppercase tracking-wide mb-1">{c.label}</p>
+                <div key={c.label} className="rounded-lg p-3 border border-slate-200 bg-slate-50">
+                  <p className="text-slate-400 text-[9px] font-bold uppercase tracking-wide mb-1">{c.label}</p>
                   <p className={`font-black text-sm ${c.color}`}>{fmt(Math.abs(c.value))}</p>
                 </div>
               ))}
@@ -2045,8 +2045,8 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
           </div>
 
           {/* Por Forma de Pagamento */}
-          <div className="rounded-xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.04)" }}>
-            <h3 className="text-white/60 text-xs font-bold uppercase tracking-wide mb-4">Por Forma de Pagamento</h3>
+          <div className="rounded-xl border border-slate-200 p-5 bg-white shadow-sm">
+            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-4">Por Forma de Pagamento</h3>
             <div className="space-y-3">
               {FORMAS.map(f => {
                 const txsFo = filtered.filter(t => t.forma_pagamento === f);
@@ -2058,15 +2058,15 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${FORMA_STYLE[f]}`}>{f.toUpperCase()}</span>
-                        <span className="text-white/30 text-[10px]">{txsFo.length} lançamentos</span>
+                        <span className="text-slate-400 text-[10px]">{txsFo.length} lançamentos</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-white/35 text-[10px]">{pct}%</span>
-                        <span className="text-white/70 font-black text-xs">{fmt(tot)}</span>
+                        <span className="text-slate-400 text-[10px]">{pct}%</span>
+                        <span className="text-slate-700 font-black text-xs">{fmt(tot)}</span>
                       </div>
                     </div>
-                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-white/20 to-white/10 transition-all"
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-300 transition-all"
                         style={{ width: `${pct}%` }} />
                     </div>
                   </div>
@@ -2075,16 +2075,16 @@ export default function FinanceiroPage({ initialPaciente }: { initialPaciente?: 
             </div>
 
             {/* Ticket médio por forma */}
-            <div className="mt-4 pt-4 border-t border-white/8 space-y-2">
-              <p className="text-white/30 text-[9px] font-bold uppercase tracking-wide">Ticket Médio por Forma</p>
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+              <p className="text-slate-400 text-[9px] font-bold uppercase tracking-wide">Ticket Médio por Forma</p>
               {FORMAS.map(f => {
                 const txsFo = filtered.filter(t => t.forma_pagamento === f);
                 if (!txsFo.length) return null;
                 const med = txsFo.reduce((s, t) => s + Number(t.valor || 0), 0) / txsFo.length;
                 return (
                   <div key={f} className="flex justify-between text-[11px]">
-                    <span className="text-white/40 capitalize">{f}</span>
-                    <span className="text-white/70 font-bold">{fmt(med)}</span>
+                    <span className="text-slate-500 capitalize">{f}</span>
+                    <span className="text-slate-700 font-bold">{fmt(med)}</span>
                   </div>
                 );
               })}
