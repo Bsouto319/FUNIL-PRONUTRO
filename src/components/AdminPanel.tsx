@@ -192,23 +192,23 @@ export default function AdminPanel({ user }: { user: any }) {
 
   const roleLabel: Record<string, string> = { gerente: "Gerente", secretaria: "Secretária", medico: "Médico", admin: "Admin" };
   const roleColor: Record<string, string> = {
-    gerente:    "bg-amber-500/20 text-amber-300 border-amber-500/30",
-    secretaria: "bg-sky-500/20 text-sky-300 border-sky-500/30",
-    medico:     "bg-violet-500/20 text-violet-300 border-violet-500/30",
-    admin:      "bg-rose-500/20 text-rose-300 border-rose-500/30",
+    gerente:    "bg-amber-100 text-amber-700 border-amber-300",
+    secretaria: "bg-sky-100 text-sky-700 border-sky-300",
+    medico:     "bg-violet-100 text-violet-700 border-violet-300",
+    admin:      "bg-rose-100 text-rose-700 border-rose-300",
   };
 
   if (user.role !== "gerente" && user.role !== "admin") {
-    return <div className="flex items-center justify-center h-full text-white/30 text-sm">Acesso restrito a gerentes.</div>;
+    return <div className="flex items-center justify-center h-full text-slate-400 text-sm">Acesso restrito a gerentes.</div>;
   }
 
   return (
     <div className="h-full overflow-y-auto px-4 sm:px-6 py-4">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <h2 className="text-white font-black text-xl">Painel Admin</h2>
-          <button onClick={load} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition">
-            <RefreshCw size={13} className="text-white/50" />
+          <h2 className="text-slate-800 font-black text-xl">Painel Admin</h2>
+          <button onClick={load} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition">
+            <RefreshCw size={13} className="text-slate-500" />
           </button>
         </div>
 
@@ -216,14 +216,14 @@ export default function AdminPanel({ user }: { user: any }) {
         <div className="flex gap-2 mb-6">
           {(["usuarios", "medicos", "horarios", "bancos", "importar"] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === t ? "bg-white/15 text-white" : "text-white/40 hover:text-white/60 hover:bg-white/5"}`}>
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition ${tab === t ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"}`}>
               {t === "usuarios" ? "👥 Usuários" : t === "medicos" ? "👨‍⚕️ Médicos" : t === "horarios" ? "🕐 Horários" : t === "bancos" ? "🏦 Bancos" : "📥 Importar"}
             </button>
           ))}
         </div>
 
         {loading ? (
-          <div className="text-white/30 text-sm text-center py-12">Carregando...</div>
+          <div className="text-slate-400 text-sm text-center py-12">Carregando...</div>
 
         ) : tab === "usuarios" ? (
           <div className="space-y-4">
@@ -231,22 +231,22 @@ export default function AdminPanel({ user }: { user: any }) {
               {usuarios.map(u => (
                 <div key={u.id}>
                   {editingUser?.id === u.id ? (
-                    <form onSubmit={handleEditUser} className="rounded-xl border border-sky-500/25 bg-sky-500/5 p-4 space-y-3">
+                    <form onSubmit={handleEditUser} className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-white font-bold text-sm">Editar Funcionário</p>
+                        <p className="text-slate-800 font-bold text-sm">Editar Funcionário</p>
                         <button type="button" onClick={() => { setEditingUser(null); setEditMsg(""); }}
-                          className="p-1 rounded hover:bg-white/10"><X size={14} className="text-white/40" /></button>
+                          className="p-1 rounded hover:bg-slate-100"><X size={14} className="text-slate-400" /></button>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome</label>
+                          <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Nome</label>
                           <input required value={editNome} onChange={e => setEditNome(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
                         </div>
                         <div>
-                          <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Função</label>
+                          <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Função</label>
                           <select value={editRole} onChange={e => setEditRole(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none">
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none">
                             <option value="secretaria">Secretária</option>
                             <option value="gerente">Gerente</option>
                             <option value="medico">Médico</option>
@@ -254,49 +254,49 @@ export default function AdminPanel({ user }: { user: any }) {
                           </select>
                         </div>
                       </div>
-                      <p className="text-white/30 text-[10px]">Email: {u.email} (não editável aqui)</p>
-                      {editMsg && <p className={`text-xs font-bold ${editMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{editMsg}</p>}
+                      <p className="text-slate-400 text-[10px]">Email: {u.email} (não editável aqui)</p>
+                      {editMsg && <p className={`text-xs font-bold ${editMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{editMsg}</p>}
                       <button type="submit" disabled={savingEdit}
                         className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition disabled:opacity-50">
                         {savingEdit ? "Salvando..." : "Salvar"}
                       </button>
                     </form>
                   ) : (
-                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
                         {(u.nome || "U")[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white font-bold text-sm">{u.nome}</p>
-                        <p className="text-white/40 text-xs">{u.email}</p>
+                        <p className="text-slate-800 font-bold text-sm">{u.nome}</p>
+                        <p className="text-slate-400 text-xs">{u.email}</p>
                       </div>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${roleColor[u.role] || "bg-white/10 text-white/50 border-white/10"}`}>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${roleColor[u.role] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                         {roleLabel[u.role] || u.role}
                       </span>
                       <button
                         onClick={() => { setEditingUser(u); setEditNome(u.nome || ""); setEditRole(u.role || "secretaria"); setEditMsg(""); }}
-                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 transition"
+                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
-                        <Edit2 size={12} className="text-white/50" />
+                        <Edit2 size={12} className="text-slate-500" />
                       </button>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10">
-              <h3 className="text-white font-bold text-sm mb-4 flex items-center gap-2"><Plus size={14} /> Novo Funcionário</h3>
+            <div className="mt-6 p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+              <h3 className="text-slate-800 font-bold text-sm mb-4 flex items-center gap-2"><Plus size={14} /> Novo Funcionário</h3>
               <form onSubmit={handleCreateUser} className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Nome</label>
                     <input value={novoNome} onChange={e => setNovoNome(e.target.value)} required placeholder="Monica Ferreira"
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
                   </div>
                   <div>
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Função</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Função</label>
                     <select value={novoRole} onChange={e => setNovoRole(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none">
                       <option value="secretaria">Secretária</option>
                       <option value="gerente">Gerente</option>
                       <option value="medico">Médico</option>
@@ -305,16 +305,16 @@ export default function AdminPanel({ user }: { user: any }) {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Email</label>
+                  <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Email</label>
                   <input value={novoEmail} onChange={e => setNovoEmail(e.target.value)} required type="email" placeholder="funcionario@pronutro.com.br"
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
                 </div>
                 <div>
-                  <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Senha temporária</label>
+                  <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Senha temporária</label>
                   <input value={novoSenha} onChange={e => setNovoSenha(e.target.value)} required type="password" placeholder="••••••••"
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
                 </div>
-                {userMsg && <p className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">{userMsg}</p>}
+                {userMsg && <p className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">{userMsg}</p>}
                 <button type="submit" disabled={savingUser}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50">
                   {savingUser ? "Criando..." : "Criar Funcionário"}
@@ -328,31 +328,31 @@ export default function AdminPanel({ user }: { user: any }) {
             {/* Lista de médicos */}
             <div className="space-y-2">
               {medicos.map(m => (
-                <div key={m.id} className="px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                <div key={m.id} className="px-4 py-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: m.cor || "#059669" }} />
                       <div className="min-w-0">
-                        <p className="text-white font-bold text-sm">{m.nome}</p>
-                        <p className="text-violet-300/70 text-xs">{m.especialidade}</p>
+                        <p className="text-slate-800 font-bold text-sm">{m.nome}</p>
+                        <p className="text-violet-600 text-xs">{m.especialidade}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right text-xs mr-1">
-                        <p className="text-emerald-300 font-bold">R$ {m.valor}</p>
-                        {m.aceita_convenio && <p className="text-sky-300/70">Convênio</p>}
+                        <p className="text-emerald-600 font-bold">R$ {m.valor}</p>
+                        {m.aceita_convenio && <p className="text-sky-600">Convênio</p>}
                       </div>
                       <button
                         onClick={() => { setMedicoForm({ id: m.id, nome: m.nome, especialidade: m.especialidade, valor: String(m.valor), aceita_convenio: m.aceita_convenio, cor: m.cor || "#059669" }); setEditingMedico(true); setMedicoMsg(""); }}
-                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 transition"
+                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
-                        <Edit2 size={12} className="text-white/50" />
+                        <Edit2 size={12} className="text-slate-500" />
                       </button>
                       <button
                         onClick={() => handleDesativarMedico(m.id, m.nome)}
-                        className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 transition"
+                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-100 border border-slate-200 hover:border-rose-300 transition"
                         title="Desativar">
-                        <Trash2 size={12} className="text-white/40 hover:text-rose-400" />
+                        <Trash2 size={12} className="text-slate-400 hover:text-rose-600" />
                       </button>
                     </div>
                   </div>
@@ -362,45 +362,45 @@ export default function AdminPanel({ user }: { user: any }) {
 
             {/* Form criar / editar */}
             {editingMedico ? (
-              <form onSubmit={handleSaveMedico} className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
+              <form onSubmit={handleSaveMedico} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-white font-bold text-sm">{medicoForm.id ? "Editar Médico" : "Novo Médico"}</p>
-                  <button type="button" onClick={() => { setEditingMedico(false); setMedicoForm(MEDICO_BLANK); }} className="p-1 rounded hover:bg-white/10"><X size={14} className="text-white/40" /></button>
+                  <p className="text-slate-800 font-bold text-sm">{medicoForm.id ? "Editar Médico" : "Novo Médico"}</p>
+                  <button type="button" onClick={() => { setEditingMedico(false); setMedicoForm(MEDICO_BLANK); }} className="p-1 rounded hover:bg-slate-100"><X size={14} className="text-slate-400" /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Nome completo</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Nome completo</label>
                     <input required value={medicoForm.nome} onChange={e => setMedicoForm(p => ({ ...p, nome: e.target.value }))}
                       placeholder="Dr. Nome Sobrenome"
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                      className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
                   </div>
                   <div>
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Especialidade</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Especialidade</label>
                     <input required value={medicoForm.especialidade} onChange={e => setMedicoForm(p => ({ ...p, especialidade: e.target.value }))}
                       placeholder="Nutrologia"
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                      className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
                   </div>
                   <div>
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Valor (R$)</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Valor (R$)</label>
                     <input required type="number" value={medicoForm.valor} onChange={e => setMedicoForm(p => ({ ...p, valor: e.target.value }))}
                       placeholder="560"
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                      className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
                   </div>
                   <div className="flex items-center gap-2 pt-5">
                     <input type="checkbox" id="conv" checked={medicoForm.aceita_convenio} onChange={e => setMedicoForm(p => ({ ...p, aceita_convenio: e.target.checked }))}
                       className="w-4 h-4 rounded accent-emerald-500" />
-                    <label htmlFor="conv" className="text-white/60 text-xs">Aceita convênio</label>
+                    <label htmlFor="conv" className="text-slate-500 text-xs">Aceita convênio</label>
                   </div>
                   <div>
-                    <label className="block text-white/50 text-[10px] font-bold mb-1 uppercase">Cor no calendário</label>
+                    <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Cor no calendário</label>
                     <div className="flex items-center gap-2">
                       <input type="color" value={medicoForm.cor} onChange={e => setMedicoForm(p => ({ ...p, cor: e.target.value }))}
-                        className="w-9 h-9 rounded-lg cursor-pointer border border-white/10 bg-transparent" />
-                      <span className="text-white/40 text-xs font-mono">{medicoForm.cor}</span>
+                        className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
+                      <span className="text-slate-400 text-xs font-mono">{medicoForm.cor}</span>
                     </div>
                   </div>
                 </div>
-                {medicoMsg && <p className={`text-xs font-bold ${medicoMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{medicoMsg}</p>}
+                {medicoMsg && <p className={`text-xs font-bold ${medicoMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{medicoMsg}</p>}
                 <button type="submit" disabled={savingMedico}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50">
                   {savingMedico ? "Salvando..." : medicoForm.id ? "Salvar alterações" : "Criar médico"}
@@ -408,7 +408,7 @@ export default function AdminPanel({ user }: { user: any }) {
               </form>
             ) : (
               <button onClick={() => { setMedicoForm(MEDICO_BLANK); setEditingMedico(true); setMedicoMsg(""); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-xs font-bold transition w-full justify-center">
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold transition w-full justify-center">
                 <Plus size={13} /> Novo Médico
               </button>
             )}
@@ -418,39 +418,39 @@ export default function AdminPanel({ user }: { user: any }) {
           /* ── Aba Horários ── */
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <Clock size={15} className="text-emerald-400" />
-              <p className="text-white/70 text-sm font-bold">Horários de Atendimento por Médico</p>
+              <Clock size={15} className="text-emerald-600" />
+              <p className="text-slate-600 text-sm font-bold">Horários de Atendimento por Médico</p>
             </div>
-            <p className="text-white/40 text-xs">
+            <p className="text-slate-400 text-xs">
               Define os dias e horários em que cada médico atende. A Maria usa esses dados para oferecer horários disponíveis.
             </p>
 
             {/* Seletor de médico */}
             <div>
-              <label className="block text-white/50 text-[10px] font-bold mb-1.5 uppercase">Selecionar Médico</label>
+              <label className="block text-slate-500 text-[10px] font-bold mb-1.5 uppercase">Selecionar Médico</label>
               <select value={medicoSel} onChange={e => setMedicoSel(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
                 {medicos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
               </select>
             </div>
 
             {/* Grade de horários */}
             {loadingDisp ? (
-              <div className="text-white/30 text-xs text-center py-8">Carregando horários...</div>
+              <div className="text-slate-400 text-xs text-center py-8">Carregando horários...</div>
             ) : (
-              <div className="rounded-xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
                 {/* Header */}
-                <div className="grid grid-cols-[80px_1fr_1fr_80px] px-4 py-2 border-b border-white/10 bg-white/[0.03]">
-                  <span className="text-white/30 text-[10px] font-black uppercase">Dia</span>
-                  <span className="text-white/30 text-[10px] font-black uppercase">Início</span>
-                  <span className="text-white/30 text-[10px] font-black uppercase">Fim</span>
-                  <span className="text-white/30 text-[10px] font-black uppercase text-center">Ativo</span>
+                <div className="grid grid-cols-[80px_1fr_1fr_80px] px-4 py-2 border-b border-slate-200 bg-slate-50">
+                  <span className="text-slate-400 text-[10px] font-black uppercase">Dia</span>
+                  <span className="text-slate-400 text-[10px] font-black uppercase">Início</span>
+                  <span className="text-slate-400 text-[10px] font-black uppercase">Fim</span>
+                  <span className="text-slate-400 text-[10px] font-black uppercase text-center">Ativo</span>
                 </div>
 
                 {disp.map(d => (
                   <div key={d.dia_semana}
-                    className={`grid grid-cols-[80px_1fr_1fr_80px] items-center px-4 py-3 border-b border-white/5 last:border-0 transition ${d.ativo ? "" : "opacity-40"}`}>
-                    <span className={`text-sm font-black ${d.ativo ? "text-white" : "text-white/40"}`}>
+                    className={`grid grid-cols-[80px_1fr_1fr_80px] items-center px-4 py-3 border-b border-slate-100 last:border-0 transition ${d.ativo ? "" : "opacity-40"}`}>
+                    <span className={`text-sm font-black ${d.ativo ? "text-slate-800" : "text-slate-400"}`}>
                       {DIAS[d.dia_semana]}
                     </span>
                     <input
@@ -458,19 +458,19 @@ export default function AdminPanel({ user }: { user: any }) {
                       value={d.hora_inicio}
                       disabled={!d.ativo}
                       onChange={e => updateDisp(d.dia_semana, "hora_inicio", e.target.value)}
-                      className="w-28 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-30"
+                      className="w-28 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-30"
                     />
                     <input
                       type="time"
                       value={d.hora_fim}
                       disabled={!d.ativo}
                       onChange={e => updateDisp(d.dia_semana, "hora_fim", e.target.value)}
-                      className="w-28 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-30"
+                      className="w-28 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40 disabled:opacity-30"
                     />
                     <div className="flex justify-center">
                       <button
                         onClick={() => updateDisp(d.dia_semana, "ativo", !d.ativo)}
-                        className={`w-10 h-6 rounded-full transition-all relative ${d.ativo ? "bg-emerald-500" : "bg-white/10"}`}>
+                        className={`w-10 h-6 rounded-full transition-all relative ${d.ativo ? "bg-emerald-500" : "bg-slate-200"}`}>
                         <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${d.ativo ? "left-4.5" : "left-0.5"}`} />
                       </button>
                     </div>
@@ -480,7 +480,7 @@ export default function AdminPanel({ user }: { user: any }) {
             )}
 
             {dispMsg && (
-              <p className={`text-xs rounded-lg px-3 py-2 font-bold ${dispMsg.startsWith("✅") ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" : "bg-amber-500/10 text-amber-300 border border-amber-500/20"}`}>
+              <p className={`text-xs rounded-lg px-3 py-2 font-bold ${dispMsg.startsWith("✅") ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
                 {dispMsg}
               </p>
             )}
@@ -494,42 +494,42 @@ export default function AdminPanel({ user }: { user: any }) {
 
         ) : tab === "bancos" ? (
           <div className="space-y-4">
-            <p className="text-white/40 text-xs">Configure os bancos e contas que a clínica usa para receber pagamentos. Aparece no fluxo de cobrança.</p>
+            <p className="text-slate-400 text-xs">Configure os bancos e contas que a clínica usa para receber pagamentos. Aparece no fluxo de cobrança.</p>
 
             {/* Lista de bancos */}
             <div className="space-y-2">
-              {bancos.length === 0 && <p className="text-white/20 text-xs text-center py-4">Nenhum banco cadastrado ainda</p>}
+              {bancos.length === 0 && <p className="text-slate-300 text-xs text-center py-4">Nenhum banco cadastrado ainda</p>}
               {bancos.map(b => (
-                <div key={b.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                <div key={b.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-slate-200 shadow-sm">
                   <span className="text-lg">🏦</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-sm">{b.nome}</p>
-                    <p className="text-white/35 text-xs">{b.tipo === "conta_corrente" ? "Conta Corrente" : b.tipo === "pix" ? "PIX" : b.tipo === "caixa" ? "Caixa" : b.tipo}
+                    <p className="text-slate-800 font-bold text-sm">{b.nome}</p>
+                    <p className="text-slate-400 text-xs">{b.tipo === "conta_corrente" ? "Conta Corrente" : b.tipo === "pix" ? "PIX" : b.tipo === "caixa" ? "Caixa" : b.tipo}
                       {b.chave_pix && ` · ${b.chave_pix}`}
                     </p>
                   </div>
                   <button onClick={() => handleDeleteBanco(b.id, b.nome)}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 transition"
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-100 border border-slate-200 hover:border-rose-300 transition"
                     title="Remover">
-                    <Trash2 size={12} className="text-white/40 hover:text-rose-400" />
+                    <Trash2 size={12} className="text-slate-400 hover:text-rose-600" />
                   </button>
                 </div>
               ))}
             </div>
 
             {/* Form novo banco */}
-            <form onSubmit={handleSaveBanco} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
-              <h3 className="text-white font-bold text-sm flex items-center gap-2"><Plus size={14} /> Novo Banco / Conta</h3>
+            <form onSubmit={handleSaveBanco} className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm space-y-3">
+              <h3 className="text-slate-800 font-bold text-sm flex items-center gap-2"><Plus size={14} /> Novo Banco / Conta</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Nome do banco *</label>
+                  <label className="block text-slate-400 text-[10px] font-black mb-1 uppercase">Nome do banco *</label>
                   <input required value={novoBancoNome} onChange={e => setNovoBancoNome(e.target.value)} placeholder="Nubank, Caixa, Bradesco..."
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
                 </div>
                 <div>
-                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Tipo</label>
+                  <label className="block text-slate-400 text-[10px] font-black mb-1 uppercase">Tipo</label>
                   <select value={novoBancoTipo} onChange={e => setNovoBancoTipo(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none">
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none">
                     <option value="conta_corrente">Conta Corrente</option>
                     <option value="pix">PIX</option>
                     <option value="caixa">Caixa / Dinheiro</option>
@@ -537,12 +537,12 @@ export default function AdminPanel({ user }: { user: any }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-white/40 text-[10px] font-black mb-1 uppercase">Chave PIX (opcional)</label>
+                  <label className="block text-slate-400 text-[10px] font-black mb-1 uppercase">Chave PIX (opcional)</label>
                   <input value={novoBancoPix} onChange={e => setNovoBancoPix(e.target.value)} placeholder="CPF, e-mail, telefone..."
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
                 </div>
               </div>
-              {bancoMsg && <p className={`text-xs font-bold ${bancoMsg.startsWith("✅") ? "text-emerald-300" : "text-rose-300"}`}>{bancoMsg}</p>}
+              {bancoMsg && <p className={`text-xs font-bold ${bancoMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{bancoMsg}</p>}
               <button type="submit" disabled={savingBanco}
                 className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50">
                 {savingBanco ? "Salvando..." : "Adicionar Banco"}

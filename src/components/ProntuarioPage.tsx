@@ -105,25 +105,25 @@ ${doc.conteudo ? `<div class="obs">${doc.conteudo}</div>` : ""}
 
 function DocCard({ doc, lead, onSend }: { doc: any; lead: any; onSend: (doc: any) => void }) {
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-white/10" style={{ background: "rgba(255,255,255,0.04)" }}>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-black ${doc.tipo === "receita" ? "bg-sky-500/20 text-sky-300" : doc.tipo === "atestado" ? "bg-amber-500/20 text-amber-300" : "bg-violet-500/20 text-violet-300"}`}>
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-black ${doc.tipo === "receita" ? "bg-sky-100 text-sky-700" : doc.tipo === "atestado" ? "bg-amber-100 text-amber-700" : "bg-violet-100 text-violet-700"}`}>
         {doc.tipo === "receita" ? "Rx" : doc.tipo === "atestado" ? "At" : "En"}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white/80 text-xs font-bold">{docLabel(doc.tipo)}</p>
-        <p className="text-white/30 text-[10px]">{fmtDate(doc.created_at)} · {doc.medico_nome || "—"}</p>
-        {doc.dias_afastamento && <p className="text-amber-300 text-[10px] font-semibold mt-0.5">{doc.dias_afastamento} dias afastamento · CID: {doc.cid || "—"}</p>}
-        <p className="text-white/40 text-[10px] mt-1 line-clamp-2 font-mono leading-relaxed">{doc.conteudo}</p>
+        <p className="text-slate-700 text-xs font-bold">{docLabel(doc.tipo)}</p>
+        <p className="text-slate-400 text-[10px]">{fmtDate(doc.created_at)} · {doc.medico_nome || "—"}</p>
+        {doc.dias_afastamento && <p className="text-amber-700 text-[10px] font-semibold mt-0.5">{doc.dias_afastamento} dias afastamento · CID: {doc.cid || "—"}</p>}
+        <p className="text-slate-400 text-[10px] mt-1 line-clamp-2 font-mono leading-relaxed">{doc.conteudo}</p>
       </div>
       <div className="flex flex-col gap-1 shrink-0">
         <button
           onClick={() => doc.tipo === "receita" ? printReceita(doc, lead) : printAtestado(doc, lead)}
-          className="p-1.5 rounded-lg hover:bg-sky-500/20 text-white/30 hover:text-sky-400 transition" title="Imprimir / PDF">
+          className="p-1.5 rounded-lg hover:bg-sky-100 text-slate-300 hover:text-sky-600 transition" title="Imprimir / PDF">
           <Printer size={12} />
         </button>
         <button
           onClick={() => onSend(doc)}
-          className={`p-1.5 rounded-lg transition ${doc.enviado_whatsapp ? "text-emerald-400 hover:bg-emerald-500/20" : "text-white/30 hover:text-emerald-400 hover:bg-emerald-500/20"}`}
+          className={`p-1.5 rounded-lg transition ${doc.enviado_whatsapp ? "text-emerald-600 hover:bg-emerald-100" : "text-slate-300 hover:text-emerald-600 hover:bg-emerald-100"}`}
           title={doc.enviado_whatsapp ? `Enviado para ${doc.phone_enviado}` : "Enviar por WhatsApp"}>
           <Send size={12} />
         </button>
@@ -320,41 +320,41 @@ export default function ProntuarioPage() {
     <div className="h-full flex overflow-hidden">
 
       {/* ── Coluna esquerda: pacientes ─────────────────────────────────────── */}
-      <div className="w-64 flex-shrink-0 flex flex-col border-r border-white/10" style={{ background: "rgba(10,20,55,0.6)" }}>
-        <div className="px-3 py-3 border-b border-white/10">
-          <p className="text-white font-black text-xs mb-2 flex items-center gap-1.5">
-            <ClipboardList size={13} className="text-emerald-400" /> Pacientes
+      <div className="w-64 flex-shrink-0 flex flex-col border-r border-slate-200 bg-white">
+        <div className="px-3 py-3 border-b border-slate-200">
+          <p className="text-slate-800 font-black text-xs mb-2 flex items-center gap-1.5">
+            <ClipboardList size={13} className="text-emerald-600" /> Pacientes
           </p>
           <div className="relative">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               value={searchLead}
               onChange={e => setSearchLead(e.target.value)}
               placeholder="Buscar paciente..."
-              className="w-full pl-8 pr-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+              className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+        <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
           {loadingLeads ? (
-            <p className="text-white/20 text-xs text-center py-8">Carregando...</p>
+            <p className="text-slate-300 text-xs text-center py-8">Carregando...</p>
           ) : filtered.length === 0 ? (
-            <p className="text-white/20 text-xs text-center py-8">Nenhum paciente</p>
+            <p className="text-slate-300 text-xs text-center py-8">Nenhum paciente</p>
           ) : (
             filtered.map(l => (
               <button
                 key={l.id}
                 onClick={() => selectLead(l)}
-                className={`w-full text-left px-3 py-2.5 border-b border-white/5 transition flex items-center gap-2 ${selectedLead?.id === l.id ? "bg-emerald-500/15 border-l-2 border-l-emerald-400" : "hover:bg-white/5"}`}
+                className={`w-full text-left px-3 py-2.5 border-b border-slate-100 transition flex items-center gap-2 ${selectedLead?.id === l.id ? "bg-emerald-50 border-l-2 border-l-emerald-500" : "hover:bg-slate-50"}`}
               >
-                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-300 font-black text-[10px]">
+                <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 font-black text-[10px]">
                   {(l.name || "?")[0].toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white/80 text-xs font-semibold truncate">{l.name || "—"}</p>
-                  <p className="text-white/30 text-[10px]">{l.phone}</p>
+                  <p className="text-slate-700 text-xs font-semibold truncate">{l.name || "—"}</p>
+                  <p className="text-slate-400 text-[10px]">{l.phone}</p>
                 </div>
-                <ChevronRight size={10} className="text-white/20 shrink-0 ml-auto" />
+                <ChevronRight size={10} className="text-slate-300 shrink-0 ml-auto" />
               </button>
             ))
           )}
@@ -362,24 +362,24 @@ export default function ProntuarioPage() {
       </div>
 
       {/* ── Área principal ────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
 
         {!selectedLead ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/20">
-            <ClipboardList size={40} className="mb-3 opacity-30" />
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
+            <ClipboardList size={40} className="mb-3 opacity-50" />
             <p className="text-sm font-bold">Selecione um paciente</p>
             <p className="text-xs mt-1">para ver e criar prontuários</p>
           </div>
         ) : (
           <>
             {/* Header do paciente */}
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/10 flex items-center gap-3" style={{ background: "rgba(10,20,55,0.4)" }}>
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-300 font-black text-sm">
+            <div className="flex-shrink-0 px-5 py-3 border-b border-slate-200 flex items-center gap-3 bg-white">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-sm">
                 {(selectedLead.name || "?")[0].toUpperCase()}
               </div>
               <div>
-                <p className="text-white font-black text-sm">{selectedLead.name}</p>
-                <p className="text-white/30 text-[10px]">+{selectedLead.phone}</p>
+                <p className="text-slate-800 font-black text-sm">{selectedLead.name}</p>
+                <p className="text-slate-400 text-[10px]">+{selectedLead.phone}</p>
               </div>
               <div className="ml-auto flex gap-2">
                 <button
@@ -391,30 +391,30 @@ export default function ProntuarioPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
 
               {/* Form: novo prontuário */}
               {showProntForm && (
-                <form onSubmit={handleSavePront} className="rounded-2xl border border-emerald-500/25 p-4 space-y-3" style={{ background: "rgba(16,100,50,0.06)" }}>
+                <form onSubmit={handleSavePront} className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-emerald-300 font-black text-sm">{editingPront ? "Editar Prontuário" : "Nova Consulta"}</p>
-                    <button type="button" onClick={() => { setShowProntForm(false); setEditingPront(null); }} className="p-1 rounded-lg hover:bg-white/10">
-                      <X size={13} className="text-white/40" />
+                    <p className="text-emerald-700 font-black text-sm">{editingPront ? "Editar Prontuário" : "Nova Consulta"}</p>
+                    <button type="button" onClick={() => { setShowProntForm(false); setEditingPront(null); }} className="p-1 rounded-lg hover:bg-emerald-100">
+                      <X size={13} className="text-slate-400" />
                     </button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-white/40 text-[10px] font-bold block mb-1">DATA DA CONSULTA</label>
+                      <label className="text-slate-500 text-[10px] font-bold block mb-1">DATA DA CONSULTA</label>
                       <input type="date" required value={prontForm.data_consulta}
                         onChange={e => setProntForm(f => ({ ...f, data_consulta: e.target.value }))}
-                        style={{ colorScheme: "dark" }}
-                        className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
+                        style={{ colorScheme: "light" }}
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40" />
                     </div>
                     <div>
-                      <label className="text-white/40 text-[10px] font-bold block mb-1">MÉDICO / NUTRICIONISTA</label>
+                      <label className="text-slate-500 text-[10px] font-bold block mb-1">MÉDICO / NUTRICIONISTA</label>
                       <select value={prontForm.medico_id} onChange={e => setProntForm(f => ({ ...f, medico_id: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40">
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/40">
                         <option value="">Selecionar...</option>
                         {medicos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
                       </select>
@@ -430,19 +430,19 @@ export default function ProntuarioPage() {
                     { key: "observacoes",      label: "OBSERVAÇÕES", rows: 2 },
                   ].map(({ key, label, rows }) => (
                     <div key={key}>
-                      <label className="text-white/40 text-[10px] font-bold block mb-1">{label}</label>
+                      <label className="text-slate-500 text-[10px] font-bold block mb-1">{label}</label>
                       <textarea
                         value={(prontForm as any)[key]}
                         onChange={e => setProntForm(f => ({ ...f, [key]: e.target.value }))}
                         rows={rows}
-                        className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 resize-none"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs placeholder-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 resize-none"
                       />
                     </div>
                   ))}
 
                   <div className="flex justify-end gap-2 pt-1">
                     <button type="button" onClick={() => { setShowProntForm(false); setEditingPront(null); }}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 text-xs font-bold transition">
+                      className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 text-xs font-bold transition">
                       Cancelar
                     </button>
                     <button type="submit" disabled={savingPront}
@@ -455,47 +455,47 @@ export default function ProntuarioPage() {
 
               {/* Lista de prontuários */}
               {loadingPront ? (
-                <p className="text-white/20 text-xs text-center py-8">Carregando prontuários...</p>
+                <p className="text-slate-300 text-xs text-center py-8">Carregando prontuários...</p>
               ) : prontuarios.length === 0 && !showProntForm ? (
                 <div className="text-center py-12">
-                  <ClipboardList size={32} className="mx-auto text-white/15 mb-3" />
-                  <p className="text-white/30 text-sm font-bold">Sem prontuários</p>
-                  <p className="text-white/20 text-xs mt-1">Clique em "Nova Consulta" para registrar</p>
+                  <ClipboardList size={32} className="mx-auto text-slate-200 mb-3" />
+                  <p className="text-slate-400 text-sm font-bold">Sem prontuários</p>
+                  <p className="text-slate-300 text-xs mt-1">Clique em "Nova Consulta" para registrar</p>
                 </div>
               ) : (
                 prontuarios.map(p => {
                   const isOpen = openPront === p.id;
                   const docs = prontDocs[p.id] || [];
                   return (
-                    <div key={p.id} className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <div key={p.id} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm">
                       {/* Header do prontuário */}
                       <button
                         onClick={() => togglePront(p.id)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
-                          <ClipboardList size={14} className="text-emerald-400" />
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                          <ClipboardList size={14} className="text-emerald-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white/80 text-xs font-bold">{fmtDate(p.data_consulta)}</p>
-                          <p className="text-white/35 text-[10px]">
+                          <p className="text-slate-700 text-xs font-bold">{fmtDate(p.data_consulta)}</p>
+                          <p className="text-slate-400 text-[10px]">
                             {p.medico?.nome || "Sem profissional"}
                             {p.queixa_principal ? ` · ${p.queixa_principal.slice(0, 50)}${p.queixa_principal.length > 50 ? "…" : ""}` : ""}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {docs.length > 0 && (
-                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-300">
                               {docs.length} doc{docs.length > 1 ? "s" : ""}
                             </span>
                           )}
-                          {isOpen ? <ChevronUp size={13} className="text-white/30" /> : <ChevronDown size={13} className="text-white/30" />}
+                          {isOpen ? <ChevronUp size={13} className="text-slate-400" /> : <ChevronDown size={13} className="text-slate-400" />}
                         </div>
                       </button>
 
                       {/* Conteúdo expandido */}
                       {isOpen && (
-                        <div className="px-4 pb-4 space-y-4 border-t border-white/5">
+                        <div className="px-4 pb-4 space-y-4 border-t border-slate-100">
                           {/* Campos do prontuário */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
                             {[
@@ -506,9 +506,9 @@ export default function ProntuarioPage() {
                               { label: "Plano de Tratamento", val: p.plano_tratamento },
                               { label: "Observações",       val: p.observacoes },
                             ].filter(f => f.val).map(({ label, val }) => (
-                              <div key={label} className="rounded-xl border border-white/5 p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                                <p className="text-white/30 text-[10px] font-bold mb-1 uppercase tracking-wide">{label}</p>
-                                <p className="text-white/70 text-xs leading-relaxed whitespace-pre-wrap">{val}</p>
+                              <div key={label} className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                                <p className="text-slate-400 text-[10px] font-bold mb-1 uppercase tracking-wide">{label}</p>
+                                <p className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">{val}</p>
                               </div>
                             ))}
                           </div>
@@ -516,7 +516,7 @@ export default function ProntuarioPage() {
                           {/* Documentos do prontuário */}
                           {docs.length > 0 && (
                             <div>
-                              <p className="text-white/30 text-[10px] font-bold mb-2 uppercase tracking-wide">Documentos emitidos</p>
+                              <p className="text-slate-400 text-[10px] font-bold mb-2 uppercase tracking-wide">Documentos emitidos</p>
                               <div className="space-y-2">
                                 {docs.map(doc => (
                                   <DocCard key={doc.id} doc={doc} lead={selectedLead} onSend={d => { setSendingDoc(d); setSendPhone(selectedLead.phone || ""); setSentWA(false); }} />
@@ -529,19 +529,19 @@ export default function ProntuarioPage() {
                           <div className="flex gap-2 flex-wrap pt-1">
                             <button
                               onClick={() => { setShowDocForm(showDocForm === p.id ? null : p.id); setDocForm({ ...EMPTY_DOC, tipo: "receita" }); setShowProntForm(false); }}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600/80 hover:bg-sky-600 text-white text-xs font-black transition shadow-lg shadow-sky-500/20"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/20"
                             >
                               <FileText size={12} /> Receita Médica
                             </button>
                             <button
                               onClick={() => { setShowDocForm(showDocForm === p.id ? null : p.id); setDocForm({ ...EMPTY_DOC, tipo: "atestado" }); setShowProntForm(false); }}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600/80 hover:bg-amber-600 text-white text-xs font-black transition shadow-lg shadow-amber-500/20"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black transition shadow-lg shadow-amber-500/20"
                             >
                               <FileText size={12} /> Atestado
                             </button>
                             <button
                               onClick={() => startEditPront(p)}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 text-xs font-bold transition"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold transition"
                             >
                               Editar
                             </button>
@@ -549,18 +549,18 @@ export default function ProntuarioPage() {
 
                           {/* Form: novo documento */}
                           {showDocForm === p.id && (
-                            <form onSubmit={handleSaveDoc} className="rounded-xl border border-sky-500/20 p-4 space-y-3" style={{ background: "rgba(14,100,180,0.06)" }}>
+                            <form onSubmit={handleSaveDoc} className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">
                               <div className="flex items-center justify-between">
-                                <p className="text-sky-300 font-black text-xs">{docForm.tipo === "receita" ? "Nova Receita Médica" : docForm.tipo === "atestado" ? "Novo Atestado" : "Novo Encaminhamento"}</p>
+                                <p className="text-sky-700 font-black text-xs">{docForm.tipo === "receita" ? "Nova Receita Médica" : docForm.tipo === "atestado" ? "Novo Atestado" : "Novo Encaminhamento"}</p>
                                 <button type="button" onClick={() => setShowDocForm(null)}>
-                                  <X size={12} className="text-white/30 hover:text-white/60" />
+                                  <X size={12} className="text-slate-400 hover:text-slate-600" />
                                 </button>
                               </div>
 
                               <div className="flex gap-2">
                                 {(["receita","atestado","encaminhamento"] as const).map(t => (
                                   <button type="button" key={t} onClick={() => setDocForm(f => ({ ...f, tipo: t }))}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${docForm.tipo === t ? "bg-sky-600 border-sky-500 text-white" : "bg-white/5 border-white/10 text-white/40 hover:text-white"}`}>
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${docForm.tipo === t ? "bg-sky-600 border-sky-500 text-white" : "bg-white border-slate-200 text-slate-400 hover:text-slate-700"}`}>
                                     {docLabel(t)}
                                   </button>
                                 ))}
@@ -569,23 +569,23 @@ export default function ProntuarioPage() {
                               {docForm.tipo === "atestado" && (
                                 <div className="grid grid-cols-2 gap-3">
                                   <div>
-                                    <label className="text-white/40 text-[10px] font-bold block mb-1">DIAS DE AFASTAMENTO</label>
+                                    <label className="text-slate-500 text-[10px] font-bold block mb-1">DIAS DE AFASTAMENTO</label>
                                     <input type="number" min="1" value={docForm.dias_afastamento}
                                       onChange={e => setDocForm(f => ({ ...f, dias_afastamento: e.target.value }))}
                                       placeholder="Ex: 2"
-                                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40" />
+                                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40" />
                                   </div>
                                   <div>
-                                    <label className="text-white/40 text-[10px] font-bold block mb-1">CID (opcional)</label>
+                                    <label className="text-slate-500 text-[10px] font-bold block mb-1">CID (opcional)</label>
                                     <input value={docForm.cid} onChange={e => setDocForm(f => ({ ...f, cid: e.target.value }))}
                                       placeholder="Ex: Z71.3"
-                                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40" />
+                                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500/40" />
                                   </div>
                                 </div>
                               )}
 
                               <div>
-                                <label className="text-white/40 text-[10px] font-bold block mb-1">
+                                <label className="text-slate-500 text-[10px] font-bold block mb-1">
                                   {docForm.tipo === "receita" ? "PRESCRIÇÃO / ORIENTAÇÕES" : docForm.tipo === "atestado" ? "OBSERVAÇÕES / JUSTIFICATIVA" : "ENCAMINHAMENTO PARA"}
                                 </label>
                                 <textarea
@@ -598,13 +598,13 @@ export default function ProntuarioPage() {
                                     : docForm.tipo === "atestado"
                                     ? "Descreva o motivo do afastamento..."
                                     : "Encaminhar para especialidade / exames..."}
-                                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs placeholder-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500/40 resize-none font-mono"
                                 />
                               </div>
 
                               <div className="flex justify-end gap-2">
                                 <button type="button" onClick={() => setShowDocForm(null)}
-                                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 text-xs font-bold transition">
+                                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-400 text-xs font-bold transition">
                                   Cancelar
                                 </button>
                                 <button type="submit" disabled={savingDoc}

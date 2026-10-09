@@ -173,12 +173,12 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
             </div>
             {/* Analisar Todos */}
             <button onClick={handleAnalyzeAll} disabled={analyzingAll}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-violet-500/40 bg-violet-500/15 text-violet-300 text-xs font-black hover:bg-violet-500/25 transition disabled:opacity-50">
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-violet-300 bg-violet-50 text-violet-700 text-xs font-black hover:bg-violet-100 transition disabled:opacity-50">
               <Zap size={12} className={analyzingAll ? "animate-pulse" : ""} />
               {analyzingAll ? "Analisando..." : "Analisar Todos"}
             </button>
-            <button onClick={load} disabled={loading} className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition disabled:opacity-40">
-              <RefreshCw size={13} className={`text-white/40 ${loading ? "animate-spin" : ""}`} />
+            <button onClick={load} disabled={loading} className="p-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition disabled:opacity-40">
+              <RefreshCw size={13} className={`text-slate-400 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
         </div>
@@ -189,45 +189,45 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
           {(["todos", "pendente", "enviado", "descartado"] as const).map(s => (
             <button key={s} onClick={() => setFilter(s)}
               className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition capitalize ${
-                filter === s ? "bg-white/15 border-white/25 text-white" : "border-white/8 text-white/35 hover:text-white/60"
+                filter === s ? "bg-slate-800 border-slate-800 text-white" : "border-slate-200 text-slate-400 hover:text-slate-700"
               }`}>
               {s === "todos" ? "Todos" : s === "pendente" ? "⏳ Pendentes" : s === "enviado" ? "✅ Enviados" : "🗑 Descartados"}
             </button>
           ))}
-          <div className="w-px h-4 bg-white/10" />
+          <div className="w-px h-4 bg-slate-200" />
           {/* Tipo filter */}
           <button onClick={() => setTypeFilter("todos")}
-            className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition ${typeFilter === "todos" ? "bg-white/15 border-white/25 text-white" : "border-white/8 text-white/30 hover:text-white/60"}`}>
+            className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition ${typeFilter === "todos" ? "bg-slate-800 border-slate-800 text-white" : "border-slate-200 text-slate-400 hover:text-slate-700"}`}>
             Todos tipos
           </button>
           {Object.entries(TIPO_META).filter(([k]) => k !== "sem_acao").map(([key, meta]) => (
             <button key={key} onClick={() => setTypeFilter(typeFilter === key ? "todos" : key)}
               className="text-[10px] font-black px-2.5 py-1 rounded-lg border transition"
               style={{
-                background: typeFilter === key ? `${meta.color}20` : "transparent",
-                borderColor: typeFilter === key ? `${meta.color}50` : "rgba(255,255,255,0.08)",
-                color: typeFilter === key ? meta.color : "rgba(255,255,255,0.30)",
+                background: typeFilter === key ? `${meta.color}18` : "transparent",
+                borderColor: typeFilter === key ? `${meta.color}60` : "#e2e8f0",
+                color: typeFilter === key ? meta.color : "#94a3b8",
               }}>
               {meta.icon} {meta.label}
             </button>
           ))}
           <div className="relative ml-auto">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Buscar paciente..."
-              className="pl-7 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-[11px] placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-violet-500/40 w-40" />
+              className="pl-7 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[11px] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-500/40 w-40" />
           </div>
         </div>
       </div>
 
       {/* Lista de planos */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 bg-slate-50 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-2 text-white/25 text-sm">
+          <div className="flex items-center justify-center py-20 gap-2 text-slate-400 text-sm">
             <RefreshCw size={15} className="animate-spin" /> Carregando planos...
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-white/20">
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-300">
             <Brain size={40} strokeWidth={1} />
             <p className="text-sm font-bold">
               {plans.length === 0
@@ -249,23 +249,18 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
 
             return (
               <div key={plan.id}
-                className="rounded-2xl border overflow-hidden transition-all"
+                className="rounded-2xl border overflow-hidden transition-all bg-white shadow-sm"
                 style={{
-                  background: isDescartado
-                    ? "rgba(255,255,255,0.02)"
-                    : isSemAcao
-                    ? "rgba(255,255,255,0.03)"
-                    : "rgba(255,255,255,0.04)",
                   borderColor: isEnviado
-                    ? "rgba(16,185,129,0.30)"
+                    ? "rgba(16,185,129,0.35)"
                     : isDescartado
-                    ? "rgba(255,255,255,0.06)"
-                    : `${meta.color}30`,
-                  opacity: isDescartado ? 0.5 : 1,
+                    ? "#e2e8f0"
+                    : `${meta.color}40`,
+                  opacity: isDescartado ? 0.6 : 1,
                 }}>
 
                 {/* Card header */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
                   {/* Avatar */}
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0"
                     style={{ background: `${meta.color}20`, color: meta.color }}>
@@ -274,36 +269,36 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <button onClick={() => onSelectLead && lead.id && onSelectLead(lead)}
-                        className="text-white font-black text-sm hover:text-violet-200 transition leading-none">
+                        className="text-slate-800 font-black text-sm hover:text-violet-600 transition leading-none">
                         {nome}
                       </button>
                       {lead.numero_prontuario && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/10 text-white/40">
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
                           #{String(lead.numero_prontuario).padStart(3, "0")}
                         </span>
                       )}
                       {/* Tipo badge */}
                       <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                        style={{ background: `${meta.color}20`, color: meta.color, border: `1px solid ${meta.color}40` }}>
+                        style={{ background: `${meta.color}18`, color: meta.color, border: `1px solid ${meta.color}50` }}>
                         {meta.icon} {meta.label}
                       </span>
                       {/* Urgência */}
                       {plan.urgencia && plan.urgencia !== "baixa" && !isSemAcao && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full border"
-                          style={{ color: URGENCIA_COLOR[plan.urgencia], borderColor: `${URGENCIA_COLOR[plan.urgencia]}40`, background: `${URGENCIA_COLOR[plan.urgencia]}10` }}>
+                          style={{ color: URGENCIA_COLOR[plan.urgencia], borderColor: `${URGENCIA_COLOR[plan.urgencia]}50`, background: `${URGENCIA_COLOR[plan.urgencia]}12` }}>
                           ⚡ {plan.urgencia}
                         </span>
                       )}
                     </div>
-                    <p className="text-white/30 text-[10px] font-mono mt-0.5">+{lead.phone}</p>
+                    <p className="text-slate-400 text-[10px] font-mono mt-0.5">+{lead.phone}</p>
                   </div>
                   {/* Status */}
                   <div className="shrink-0 text-right">
-                    {isEnviado && <span className="text-[10px] font-black text-emerald-400">✅ Enviado</span>}
-                    {isDescartado && <span className="text-[10px] font-black text-white/25">🗑 Descartado</span>}
-                    {isPendente && !isSemAcao && <span className="text-[10px] font-black text-amber-400 animate-pulse">⏳ Aguardando aprovação</span>}
-                    {isPendente && isSemAcao && <span className="text-[10px] font-black text-white/25">— Sem ação</span>}
-                    <p className="text-white/15 text-[9px] mt-0.5">
+                    {isEnviado && <span className="text-[10px] font-black text-emerald-600">✅ Enviado</span>}
+                    {isDescartado && <span className="text-[10px] font-black text-slate-400">🗑 Descartado</span>}
+                    {isPendente && !isSemAcao && <span className="text-[10px] font-black text-amber-600 animate-pulse">⏳ Aguardando aprovação</span>}
+                    {isPendente && isSemAcao && <span className="text-[10px] font-black text-slate-400">— Sem ação</span>}
+                    <p className="text-slate-300 text-[9px] mt-0.5">
                       {new Date(plan.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </div>
@@ -311,9 +306,9 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
 
                 {/* Tags */}
                 {plan.tags?.length > 0 && (
-                  <div className="flex gap-1.5 px-4 py-2 flex-wrap border-b border-white/5">
+                  <div className="flex gap-1.5 px-4 py-2 flex-wrap border-b border-slate-100">
                     {plan.tags.map((tag: string) => (
-                      <span key={tag} className="text-[9px] px-2 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/8">
+                      <span key={tag} className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
                         #{tag}
                       </span>
                     ))}
@@ -321,13 +316,13 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                 )}
 
                 {/* Análise da IA */}
-                <div className="px-4 py-3 border-b border-white/5" style={{ background: "rgba(139,92,246,0.04)" }}>
+                <div className="px-4 py-3 border-b border-slate-100 bg-violet-50/60">
                   <div className="flex items-start gap-2">
-                    <Brain size={12} className="text-violet-400 shrink-0 mt-0.5" />
+                    <Brain size={12} className="text-violet-500 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-violet-300/60 text-[9px] font-black uppercase tracking-wider mb-1">Análise Maria IA</p>
-                      <p className="text-white/60 text-xs leading-relaxed">{plan.analise}</p>
-                      {plan.plano && <p className="text-white/35 text-[10px] mt-1.5 italic leading-relaxed">📋 {plan.plano}</p>}
+                      <p className="text-violet-500 text-[9px] font-black uppercase tracking-wider mb-1">Análise Maria IA</p>
+                      <p className="text-slate-600 text-xs leading-relaxed">{plan.analise}</p>
+                      {plan.plano && <p className="text-slate-400 text-[10px] mt-1.5 italic leading-relaxed">📋 {plan.plano}</p>}
                     </div>
                   </div>
                 </div>
@@ -336,12 +331,12 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                 {plan.mensagem_sugerida && !isSemAcao && (
                   <div className="px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-white/30 text-[9px] font-black uppercase tracking-wider">
+                      <p className="text-slate-400 text-[9px] font-black uppercase tracking-wider">
                         💬 Mensagem sugerida — Maria vai enviar
                       </p>
                       {isPendente && !isEditing && (
                         <button onClick={() => { setEditingId(plan.id); setEditText(plan.mensagem_sugerida); }}
-                          className="flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-lg border border-white/15 text-white/40 hover:text-white/70 hover:bg-white/8 transition">
+                          className="flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition">
                           <Edit3 size={9} /> Editar
                         </button>
                       )}
@@ -353,24 +348,24 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                           value={editText}
                           onChange={e => setEditText(e.target.value)}
                           rows={6}
-                          className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-violet-500/30 text-white text-xs leading-relaxed placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none"
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-violet-300 text-slate-800 text-xs leading-relaxed placeholder-slate-300 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none"
                         />
                         <div className="flex gap-2">
                           <button onClick={() => handleSaveEdit(plan.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black"
-                            style={{ background: "rgba(16,185,129,0.2)", color: "#10b981", border: "1.5px solid rgba(16,185,129,0.4)" }}>
+                            style={{ background: "rgba(16,185,129,0.12)", color: "#059669", border: "1.5px solid rgba(16,185,129,0.35)" }}>
                             <Check size={11} /> Salvar
                           </button>
                           <button onClick={() => setEditingId(null)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black"
-                            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", border: "1.5px solid rgba(255,255,255,0.1)" }}>
+                            style={{ background: "#f1f5f9", color: "#64748b", border: "1.5px solid #e2e8f0" }}>
                             <X size={11} /> Cancelar
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="rounded-xl px-3.5 py-3 text-xs text-white/80 leading-relaxed whitespace-pre-wrap font-mono border"
-                        style={{ background: "rgba(139,92,246,0.08)", borderColor: "rgba(139,92,246,0.2)" }}>
+                      <div className="rounded-xl px-3.5 py-3 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap font-mono border"
+                        style={{ background: "rgba(139,92,246,0.06)", borderColor: "rgba(139,92,246,0.25)" }}>
                         {plan.mensagem_sugerida}
                       </div>
                     )}
@@ -380,19 +375,19 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                       <div className="flex gap-2 mt-3">
                         <button onClick={() => handleSend(plan)} disabled={isSending}
                           className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition disabled:opacity-50"
-                          style={{ background: "rgba(139,92,246,0.2)", color: "#c4b5fd", border: "1.5px solid rgba(139,92,246,0.4)" }}>
+                          style={{ background: "#7c3aed", color: "#ffffff", border: "1.5px solid #7c3aed" }}>
                           <Send size={13} className={isSending ? "animate-pulse" : ""} />
                           {isSending ? "Maria enviando..." : "✓ Aprovar e Maria Envia"}
                         </button>
                         <button onClick={() => handleDiscard(plan.id)}
                           className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition"
-                          style={{ background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.5)", border: "1.5px solid rgba(239,68,68,0.15)" }}>
+                          style={{ background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca" }}>
                           <Trash2 size={13} /> Descartar
                         </button>
                         <button onClick={() => handleAnalyzeOne(lead.id)} disabled={analyzing === lead.id}
                           title="Re-analisar conversa"
                           className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl text-xs font-black transition"
-                          style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", border: "1.5px solid rgba(255,255,255,0.08)" }}>
+                          style={{ background: "#f8fafc", color: "#94a3b8", border: "1.5px solid #e2e8f0" }}>
                           <RefreshCw size={12} className={analyzing === lead.id ? "animate-spin" : ""} />
                         </button>
                       </div>
@@ -403,9 +398,9 @@ export default function FollowupPage({ onSelectLead }: { onSelectLead?: (lead: a
                 {/* Sem ação — só mostra analise, sem botões de envio */}
                 {isSemAcao && (
                   <div className="px-4 py-2 flex items-center justify-between">
-                    <p className="text-white/20 text-[10px]">Nenhuma mensagem necessária agora</p>
+                    <p className="text-slate-300 text-[10px]">Nenhuma mensagem necessária agora</p>
                     <button onClick={() => handleDiscard(plan.id)}
-                      className="text-[9px] font-black text-white/20 hover:text-white/40 transition">
+                      className="text-[9px] font-black text-slate-300 hover:text-slate-500 transition">
                       Arquivar
                     </button>
                   </div>
