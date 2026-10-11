@@ -39,7 +39,7 @@ export default function AdminPanel({ user }: { user: any }) {
   const [editMsg, setEditMsg]           = useState("");
 
   // Médico form
-  const MEDICO_BLANK = { id: "", nome: "", especialidade: "", valor: "", aceita_convenio: false, cor: "#059669" };
+  const MEDICO_BLANK = { id: "", nome: "", especialidade: "", valor: "", aceita_convenio: false, cor: "#059669", cpf: "", registro_profissional: "", uf_registro: "" };
   const [medicoForm, setMedicoForm] = useState(MEDICO_BLANK);
   const [editingMedico, setEditingMedico] = useState(false);
   const [savingMedico, setSavingMedico]   = useState(false);
@@ -126,6 +126,9 @@ export default function AdminPanel({ user }: { user: any }) {
       valor: parseFloat(String(medicoForm.valor)) || 0,
       aceita_convenio: medicoForm.aceita_convenio,
       cor: medicoForm.cor,
+      cpf: medicoForm.cpf.replace(/\D/g, "") || undefined,
+      registro_profissional: medicoForm.registro_profissional.trim() || undefined,
+      uf_registro: medicoForm.uf_registro.trim().toUpperCase() || undefined,
     });
     setSavingMedico(false);
     if (ok) {
@@ -335,6 +338,13 @@ export default function AdminPanel({ user }: { user: any }) {
                       <div className="min-w-0">
                         <p className="text-slate-800 font-bold text-sm">{m.nome}</p>
                         <p className="text-violet-600 text-xs">{m.especialidade}</p>
+                        {m.registro_profissional ? (
+                          <p className={`text-[10px] font-bold mt-0.5 ${m.memed_token ? "text-emerald-600" : "text-amber-600"}`}>
+                            CRM {m.registro_profissional}/{m.uf_registro} · {m.memed_token ? "Memed OK" : "Memed pendente de 1º cadastro"}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] font-bold text-slate-300 mt-0.5">Sem CRM cadastrado — não emite receita digital</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -343,7 +353,7 @@ export default function AdminPanel({ user }: { user: any }) {
                         {m.aceita_convenio && <p className="text-sky-600">Convênio</p>}
                       </div>
                       <button
-                        onClick={() => { setMedicoForm({ id: m.id, nome: m.nome, especialidade: m.especialidade, valor: String(m.valor), aceita_convenio: m.aceita_convenio, cor: m.cor || "#059669" }); setEditingMedico(true); setMedicoMsg(""); }}
+                        onClick={() => { setMedicoForm({ id: m.id, nome: m.nome, especialidade: m.especialidade, valor: String(m.valor), aceita_convenio: m.aceita_convenio, cor: m.cor || "#059669", cpf: m.cpf || "", registro_profissional: m.registro_profissional || "", uf_registro: m.uf_registro || "" }); setEditingMedico(true); setMedicoMsg(""); }}
                         className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
                         <Edit2 size={12} className="text-slate-500" />
@@ -399,6 +409,31 @@ export default function AdminPanel({ user }: { user: any }) {
                       <span className="text-slate-400 text-xs font-mono">{medicoForm.cor}</span>
                     </div>
                   </div>
+                </div>
+
+                <div className="pt-2 border-t border-emerald-200/60">
+                  <p className="text-emerald-700 text-[10px] font-black uppercase tracking-wide mb-2">Registro profissional (pra emitir receita digital via Memed)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">CPF</label>
+                      <input value={medicoForm.cpf} onChange={e => setMedicoForm(p => ({ ...p, cpf: e.target.value }))}
+                        placeholder="000.000.000-00"
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">CRM (número)</label>
+                      <input value={medicoForm.registro_profissional} onChange={e => setMedicoForm(p => ({ ...p, registro_profissional: e.target.value }))}
+                        placeholder="123456"
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">UF do CRM</label>
+                      <input value={medicoForm.uf_registro} onChange={e => setMedicoForm(p => ({ ...p, uf_registro: e.target.value.toUpperCase().slice(0, 2) }))}
+                        placeholder="DF"
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                    </div>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-1.5">Sem isso preenchido, esse médico não consegue emitir receita digital — fica só com atestado/encaminhamento manual.</p>
                 </div>
                 {medicoMsg && <p className={`text-xs font-bold ${medicoMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{medicoMsg}</p>}
                 <button type="submit" disabled={savingMedico}

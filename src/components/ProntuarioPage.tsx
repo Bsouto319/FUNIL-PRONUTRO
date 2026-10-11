@@ -4,6 +4,7 @@ import {
   fetchLeads, fetchMedicos,
   fetchProntuarios, upsertProntuario,
   fetchDocumentos, insertDocumento, marcarDocumentoEnviado,
+  obterTokenMemed,
 } from "../lib/api";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -167,6 +168,10 @@ export default function ProntuarioPage() {
   const [docForm, setDocForm]               = useState({ ...EMPTY_DOC });
   const [savingDoc, setSavingDoc]           = useState(false);
 
+  // Receita digital (Memed)
+  const [memedLoading, setMemedLoading]     = useState(false);
+  const [memedMsg, setMemedMsg]             = useState("");
+
   // WhatsApp send modal
   const [sendingDoc, setSendingDoc]         = useState<any | null>(null);
   const [sendPhone, setSendPhone]           = useState("");
@@ -280,6 +285,58 @@ export default function ProntuarioPage() {
       const docs = await fetchDocumentos(showDocForm);
       setProntDocs(prev => ({ ...prev, [showDocForm]: docs }));
     }
+  }
+
+  // Injeta o SDK da Memed e abre a tela nativa de prescrição (médico escolhe
+  // o remédio na base deles, com posologia/favoritos próprios -- só muda o
+  // paciente). TODO: confirmar com a Memed a sintaxe exata do evento
+  // "prescricaoImpressa" pra logar a receita emitida em pn_documentos
+  // automaticamente -- por ora o médico usa o próprio envio da Memed ao
+  // paciente (SMS/WhatsApp) na hora de assinar.
+  function carregarMemedSDK(token: string) {
+    document.getElementById("memed-sdk-script")?.remove();
+    const script = document.createElement("script");
+    script.id = "memed-sdk-script";
+    script.src = "https://integrations.memed.com.br/modulos/plataforma.sinapse-prescricao/build/sinapse-prescricao.min.js";
+    script.setAttribute("data-token", token);
+    script.onload = () => {
+      (window as any).MdSinapsePrescricao?.event.add("core:moduleInit", async (module: any) => {
+        if (module.name !== "plataforma.prescricao") return;
+        try {
+          await (window as any).MdHub.command.send("plataforma.prescricao", "setPaciente", {
+            idExterno: selectedLead.id,
+            nome: selectedLead.name,
+            cpf: (selectedLead.cpf || "").replace(/\D/g, ""),
+            sexo: selectedLead.sexo === "F" ? "Feminino" : "Masculino",
+            data_nascimento: new Date(selectedLead.data_nascimento).toLocaleDateString("pt-BR"),
+          });
+          await (window as any).MdHub.module.show("plataforma.prescricao");
+        } catch (err) {
+          setMemedMsg("Erro ao abrir a tela da Memed: " + String(err));
+        }
+      });
+    };
+    script.onerror = () => setMemedMsg("Não foi possível carregar o script da Memed.");
+    document.body.appendChild(script);
+  }
+
+  async function abrirReceitaMemed(prontuarioId: string) {
+    setMemedMsg("");
+    const pront = prontuarios.find(p => p.id === prontuarioId);
+    const medicoId = pront?.medico_id;
+    if (!medicoId) { setMemedMsg("Esse prontuário não tem médico vinculado -- edite o prontuário e selecione o médico."); return; }
+    if (!selectedLead?.cpf || !selectedLead?.data_nascimento) {
+      setMemedMsg("Paciente sem CPF/data de nascimento cadastrado. A Memed exige os dois pra emitir receita digital.");
+      return;
+    }
+    setMemedLoading(true);
+    const result = await obterTokenMemed(medicoId);
+    setMemedLoading(false);
+    if (!result.ok || !result.token) {
+      setMemedMsg(result.error || "Não foi possível obter token da Memed pra esse médico.");
+      return;
+    }
+    carregarMemedSDK(result.token);
   }
 
   async function handleSendWA() {
@@ -602,6 +659,19 @@ export default function ProntuarioPage() {
                                 />
                               </div>
 
+                              {docForm.tipo === "receita" && (
+                                <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2">
+                                  <p className="text-violet-700 text-[11px] font-bold">
+                                    Receita assinada digitalmente (válida, direto pro paciente) via Memed -- o médico escolhe o remédio na base deles, com a dose que ele já costuma usar.
+                                  </p>
+                                  {memedMsg && <p className="text-rose-600 text-[10px] font-bold">{memedMsg}</p>}
+                                  <button type="button" disabled={memedLoading} onClick={() => abrirReceitaMemed(showDocForm!)}
+                                    className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-black transition disabled:opacity-60">
+                                    {memedLoading ? "Abrindo Memed..." : "✍️ Emitir receita digital (Memed)"}
+                                  </button>
+                                </div>
+                              )}
+
                               <div className="flex justify-end gap-2">
                                 <button type="button" onClick={() => setShowDocForm(null)}
                                   className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-400 text-xs font-bold transition">
@@ -609,7 +679,7 @@ export default function ProntuarioPage() {
                                 </button>
                                 <button type="submit" disabled={savingDoc}
                                   className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition disabled:opacity-60">
-                                  {savingDoc ? "Salvando..." : "Emitir documento"}
+                                  {savingDoc ? "Salvando..." : docForm.tipo === "receita" ? "Ou salvar só o texto (sem assinatura digital)" : "Emitir documento"}
                                 </button>
                               </div>
                             </form>

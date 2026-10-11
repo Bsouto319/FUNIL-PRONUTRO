@@ -296,16 +296,35 @@ export async function fetchMedicos() {
 export async function upsertMedico(m: {
   id?: string; nome: string; especialidade: string; valor: number;
   aceita_convenio: boolean; cor: string;
+  cpf?: string; registro_profissional?: string; uf_registro?: string;
 }): Promise<boolean> {
+  // cpf/registro_profissional/uf_registro mudaram -> cadastro na Memed fica desatualizado,
+  // zera o token pra forçar re-cadastro na próxima emissão de receita
+  const memedFields = (m.cpf || m.registro_profissional || m.uf_registro)
+    ? { cpf: m.cpf || null, registro_profissional: m.registro_profissional || null, uf_registro: m.uf_registro || null, memed_token: null, memed_cadastrado_em: null }
+    : {};
   if (m.id) {
     const { error } = await supabase.from("pn_medicos")
-      .update({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor })
+      .update({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ...memedFields })
       .eq("id", m.id);
     return !error;
   }
   const { error } = await supabase.from("pn_medicos")
-    .insert({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ativo: true, clinic_slug: _clinicSlug });
+    .insert({ nome: m.nome, especialidade: m.especialidade, valor: m.valor, aceita_convenio: m.aceita_convenio, cor: m.cor, ativo: true, clinic_slug: _clinicSlug, ...memedFields });
   return !error;
+}
+
+export async function obterTokenMemed(medicoId: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  try {
+    const res = await fetch("https://pvphgusjofufwtyiyviu.supabase.co/functions/v1/pn-memed-prescricao", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string)?.trim() },
+      body: JSON.stringify({ action: "obter-token", medico_id: medicoId }),
+    });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
 }
 
 export async function desativarMedico(id: string): Promise<boolean> {
