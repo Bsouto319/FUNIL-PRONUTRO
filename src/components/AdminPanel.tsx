@@ -39,7 +39,7 @@ export default function AdminPanel({ user }: { user: any }) {
   const [editMsg, setEditMsg]           = useState("");
 
   // Médico form
-  const MEDICO_BLANK = { id: "", nome: "", especialidade: "", valor: "", aceita_convenio: false, cor: "#059669", cpf: "", registro_profissional: "", uf_registro: "" };
+  const MEDICO_BLANK = { id: "", nome: "", especialidade: "", valor: "", aceita_convenio: false, cor: "#059669", cpf: "", registro_profissional: "", uf_registro: "", telefone: "" };
   const [medicoForm, setMedicoForm] = useState(MEDICO_BLANK);
   const [editingMedico, setEditingMedico] = useState(false);
   const [savingMedico, setSavingMedico]   = useState(false);
@@ -129,6 +129,7 @@ export default function AdminPanel({ user }: { user: any }) {
       cpf: medicoForm.cpf.replace(/\D/g, "") || undefined,
       registro_profissional: medicoForm.registro_profissional.trim() || undefined,
       uf_registro: medicoForm.uf_registro.trim().toUpperCase() || undefined,
+      telefone: medicoForm.telefone.replace(/\D/g, "") || undefined,
     });
     setSavingMedico(false);
     if (ok) {
@@ -353,7 +354,7 @@ export default function AdminPanel({ user }: { user: any }) {
                         {m.aceita_convenio && <p className="text-sky-600">Convênio</p>}
                       </div>
                       <button
-                        onClick={() => { setMedicoForm({ id: m.id, nome: m.nome, especialidade: m.especialidade, valor: String(m.valor), aceita_convenio: m.aceita_convenio, cor: m.cor || "#059669", cpf: m.cpf || "", registro_profissional: m.registro_profissional || "", uf_registro: m.uf_registro || "" }); setEditingMedico(true); setMedicoMsg(""); }}
+                        onClick={() => { setMedicoForm({ id: m.id, nome: m.nome, especialidade: m.especialidade, valor: String(m.valor), aceita_convenio: m.aceita_convenio, cor: m.cor || "#059669", cpf: m.cpf || "", registro_profissional: m.registro_profissional || "", uf_registro: m.uf_registro || "", telefone: m.telefone || "" }); setEditingMedico(true); setMedicoMsg(""); }}
                         className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
                         <Edit2 size={12} className="text-slate-500" />
@@ -412,7 +413,14 @@ export default function AdminPanel({ user }: { user: any }) {
                 </div>
 
                 <div className="pt-2 border-t border-emerald-200/60">
-                  <p className="text-emerald-700 text-[10px] font-black uppercase tracking-wide mb-2">Registro profissional (pra emitir receita digital via Memed)</p>
+                  <p className="text-emerald-700 text-[10px] font-black uppercase tracking-wide mb-2">WhatsApp do médico (pra mandar receita assinar)</p>
+                  <input value={medicoForm.telefone} onChange={e => setMedicoForm(p => ({ ...p, telefone: e.target.value }))}
+                    placeholder="5561999999999"
+                    className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" />
+                </div>
+
+                <div className="pt-2 border-t border-emerald-200/60">
+                  <p className="text-emerald-700 text-[10px] font-black uppercase tracking-wide mb-2">Registro profissional (pra emitir receita digital via Memed, se um dia liberar)</p>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">CPF</label>

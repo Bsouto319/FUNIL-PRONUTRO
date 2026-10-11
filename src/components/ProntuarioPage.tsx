@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Search, Plus, X, FileText, ClipboardList, Printer, Send, ChevronRight, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   fetchLeads, fetchMedicos,
   fetchProntuarios, upsertProntuario,
   fetchDocumentos, insertDocumento, marcarDocumentoEnviado,
-  obterTokenMemed,
+  obterTokenMemed, sendMediaWhatsApp,
 } from "../lib/api";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -172,6 +173,10 @@ export default function ProntuarioPage() {
   const [memedLoading, setMemedLoading]     = useState(false);
   const [memedMsg, setMemedMsg]             = useState("");
 
+  // Receita -> enviar pro médico assinar (caminho simples, sem Memed)
+  const [enviandoMedico, setEnviandoMedico] = useState(false);
+  const [envioMedicoMsg, setEnvioMedicoMsg] = useState("");
+
   // WhatsApp send modal
   const [sendingDoc, setSendingDoc]         = useState<any | null>(null);
   const [sendPhone, setSendPhone]           = useState("");
@@ -337,6 +342,57 @@ export default function ProntuarioPage() {
       return;
     }
     carregarMemedSDK(result.token);
+  }
+
+  // Gera o PDF da receita (mesmo conteúdo do printReceita) e manda direto
+  // pro WhatsApp do médico, com instrução de imprimir/assinar/fotografar de
+  // volta -- caminho simples, sem precisar de certificado digital nenhum.
+  async function gerarReceitaPdfBlob(doc: any, paciente: any): Promise<Blob> {
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595, 842]);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    let y = 790;
+    const draw = (text: string, opts: { size?: number; bold?: boolean; color?: [number, number, number]; gap?: number } = {}) => {
+      page.drawText(text, { x: 50, y, size: opts.size ?? 11, font: opts.bold ? fontBold : font, color: opts.color ? rgb(...opts.color) : rgb(0.07, 0.07, 0.07) });
+      y -= opts.gap ?? 20;
+    };
+    draw("PRONUTRO CLÍNICA", { size: 18, bold: true, gap: 16 });
+    draw("Nutrição Esportiva e Clínica · Brasília-DF", { size: 10, color: [0.4, 0.4, 0.4], gap: 24 });
+    draw("⚠ FAVOR IMPRIMIR, ASSINAR E FOTOGRAFAR DE VOLTA PARA A EQUIPE", { size: 10, bold: true, color: [0.7, 0.35, 0], gap: 28 });
+    draw(`Paciente: ${doc.nome_paciente || paciente?.name || "—"}`, { gap: 18 });
+    draw(`Data: ${fmtDate(doc.created_at || new Date().toISOString())}`, { gap: 28 });
+    draw("RECEITA MÉDICA", { size: 13, bold: true, gap: 24 });
+    const linhas = String(doc.conteudo || "").split("\n");
+    for (const linha of linhas) { draw(linha, { size: 11, gap: 16 }); }
+    y -= 50;
+    draw(`${doc.medico_nome ? "Dr(a). " + doc.medico_nome : ""}`, { size: 11, gap: 14 });
+    draw("_____________________________", { size: 11, gap: 14 });
+    draw("Assinatura", { size: 9, color: [0.5, 0.5, 0.5] });
+
+    const bytes = await pdfDoc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  async function enviarReceitaParaMedico(prontuarioId: string) {
+    setEnvioMedicoMsg("");
+    const pront = prontuarios.find(p => p.id === prontuarioId);
+    const med = medicos.find(m => m.id === pront?.medico_id) || pront?.medico;
+    if (!med?.telefone) { setEnvioMedicoMsg("Esse médico não tem WhatsApp cadastrado -- preencha em Admin > Médicos."); return; }
+    if (!docForm.conteudo.trim()) { setEnvioMedicoMsg("Escreva o conteúdo da receita antes de enviar."); return; }
+
+    setEnviandoMedico(true);
+    try {
+      const docFicticio = { nome_paciente: selectedLead?.name, medico_nome: med.nome, conteudo: docForm.conteudo, created_at: new Date().toISOString() };
+      const blob = await gerarReceitaPdfBlob(docFicticio, selectedLead);
+      const file = new File([blob], `receita-${(selectedLead?.name || "paciente").replace(/\s+/g, "-")}.pdf`, { type: "application/pdf" });
+      const ok = await sendMediaWhatsApp(med.telefone, file, undefined, "ProNutro Clínica");
+      setEnviandoMedico(false);
+      setEnvioMedicoMsg(ok ? "✅ Enviado pro WhatsApp do médico! Assim que ele mandar de volta assinada, anexe aqui." : "❌ Falha ao enviar. Confira o número cadastrado.");
+    } catch (e) {
+      setEnviandoMedico(false);
+      setEnvioMedicoMsg("❌ Erro ao gerar/enviar: " + String(e));
+    }
   }
 
   async function handleSendWA() {
@@ -660,9 +716,22 @@ export default function ProntuarioPage() {
                               </div>
 
                               {docForm.tipo === "receita" && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                                  <p className="text-amber-700 text-[11px] font-bold">
+                                    Manda a receita em PDF direto pro WhatsApp do médico -- ele imprime, assina à caneta (ou com a própria assinatura dele), fotografa e manda de volta. Funciona hoje, sem certificado nenhum.
+                                  </p>
+                                  {envioMedicoMsg && <p className={`text-[10px] font-bold ${envioMedicoMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{envioMedicoMsg}</p>}
+                                  <button type="button" disabled={enviandoMedico} onClick={() => enviarReceitaParaMedico(showDocForm!)}
+                                    className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black transition disabled:opacity-60">
+                                    {enviandoMedico ? "Enviando..." : "📤 Mandar pro médico assinar (WhatsApp)"}
+                                  </button>
+                                </div>
+                              )}
+
+                              {docForm.tipo === "receita" && (
                                 <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2">
                                   <p className="text-violet-700 text-[11px] font-bold">
-                                    Receita assinada digitalmente (válida, direto pro paciente) via Memed -- o médico escolhe o remédio na base deles, com a dose que ele já costuma usar.
+                                    Ou assinatura digital válida (um clique, sem imprimir) via Memed -- ainda em homologação, aguardando resposta deles.
                                   </p>
                                   {memedMsg && <p className="text-rose-600 text-[10px] font-bold">{memedMsg}</p>}
                                   <button type="button" disabled={memedLoading} onClick={() => abrirReceitaMemed(showDocForm!)}
