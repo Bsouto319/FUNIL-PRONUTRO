@@ -176,6 +176,7 @@ export default function ProntuarioPage() {
   // Receita -> enviar pro médico assinar (caminho simples, sem Memed)
   const [enviandoMedico, setEnviandoMedico] = useState(false);
   const [envioMedicoMsg, setEnvioMedicoMsg] = useState("");
+  const [envioMedicoPhone, setEnvioMedicoPhone] = useState(""); // editável -- pode ser o médico ou o gerente que repassa
 
   // WhatsApp send modal
   const [sendingDoc, setSendingDoc]         = useState<any | null>(null);
@@ -374,21 +375,23 @@ export default function ProntuarioPage() {
     return new Blob([bytes], { type: "application/pdf" });
   }
 
-  async function enviarReceitaParaMedico(prontuarioId: string) {
+  async function enviarReceitaParaMedico(prontuarioId: string, telefoneDestino: string) {
     setEnvioMedicoMsg("");
-    const pront = prontuarios.find(p => p.id === prontuarioId);
-    const med = medicos.find(m => m.id === pront?.medico_id) || pront?.medico;
-    if (!med?.telefone) { setEnvioMedicoMsg("Esse médico não tem WhatsApp cadastrado -- preencha em Admin > Médicos."); return; }
+    const p = telefoneDestino.replace(/\D/g, "");
+    if (p.length < 10) { setEnvioMedicoMsg("Informe o número com DDI+DDD (ex: 5561999998888)."); return; }
     if (!docForm.conteudo.trim()) { setEnvioMedicoMsg("Escreva o conteúdo da receita antes de enviar."); return; }
+
+    const pront = prontuarios.find(pr => pr.id === prontuarioId);
+    const med = medicos.find(m => m.id === pront?.medico_id) || pront?.medico;
 
     setEnviandoMedico(true);
     try {
-      const docFicticio = { nome_paciente: selectedLead?.name, medico_nome: med.nome, conteudo: docForm.conteudo, created_at: new Date().toISOString() };
+      const docFicticio = { nome_paciente: selectedLead?.name, medico_nome: med?.nome, conteudo: docForm.conteudo, created_at: new Date().toISOString() };
       const blob = await gerarReceitaPdfBlob(docFicticio, selectedLead);
       const file = new File([blob], `receita-${(selectedLead?.name || "paciente").replace(/\s+/g, "-")}.pdf`, { type: "application/pdf" });
-      const ok = await sendMediaWhatsApp(med.telefone, file, undefined, "ProNutro Clínica");
+      const ok = await sendMediaWhatsApp(p, file, undefined, "ProNutro Clínica");
       setEnviandoMedico(false);
-      setEnvioMedicoMsg(ok ? "✅ Enviado pro WhatsApp do médico! Assim que ele mandar de volta assinada, anexe aqui." : "❌ Falha ao enviar. Confira o número cadastrado.");
+      setEnvioMedicoMsg(ok ? "✅ Enviado! Assim que voltar assinada, anexe aqui." : "❌ Falha ao enviar. Confira o número.");
     } catch (e) {
       setEnviandoMedico(false);
       setEnvioMedicoMsg("❌ Erro ao gerar/enviar: " + String(e));
@@ -641,7 +644,14 @@ export default function ProntuarioPage() {
                           {/* Ações */}
                           <div className="flex gap-2 flex-wrap pt-1">
                             <button
-                              onClick={() => { setShowDocForm(showDocForm === p.id ? null : p.id); setDocForm({ ...EMPTY_DOC, tipo: "receita" }); setShowProntForm(false); }}
+                              onClick={() => {
+                                setShowDocForm(showDocForm === p.id ? null : p.id);
+                                setDocForm({ ...EMPTY_DOC, tipo: "receita" });
+                                setShowProntForm(false);
+                                const medDoProntuario = medicos.find(m => m.id === p.medico_id);
+                                setEnvioMedicoPhone(medDoProntuario?.telefone || "");
+                                setEnvioMedicoMsg("");
+                              }}
                               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black transition shadow-lg shadow-sky-500/20"
                             >
                               <FileText size={12} /> Receita Médica
@@ -718,12 +728,18 @@ export default function ProntuarioPage() {
                               {docForm.tipo === "receita" && (
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
                                   <p className="text-amber-700 text-[11px] font-bold">
-                                    Manda a receita em PDF direto pro WhatsApp do médico -- ele imprime, assina à caneta (ou com a própria assinatura dele), fotografa e manda de volta. Funciona hoje, sem certificado nenhum.
+                                    Manda a receita em PDF pro WhatsApp de quem for assinar -- pode ser o médico direto ou o gerente, se for ele quem repassa. A pessoa imprime, assina à caneta, fotografa e manda de volta. Funciona hoje, sem certificado nenhum.
                                   </p>
+                                  <div>
+                                    <label className="block text-amber-600 text-[10px] font-bold mb-1 uppercase">Enviar para (WhatsApp)</label>
+                                    <input value={envioMedicoPhone} onChange={e => setEnvioMedicoPhone(e.target.value)}
+                                      placeholder="5561999999999 -- médico ou gerente"
+                                      className="w-full px-3 py-2 rounded-lg bg-white border border-amber-200 text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40" />
+                                  </div>
                                   {envioMedicoMsg && <p className={`text-[10px] font-bold ${envioMedicoMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{envioMedicoMsg}</p>}
-                                  <button type="button" disabled={enviandoMedico} onClick={() => enviarReceitaParaMedico(showDocForm!)}
+                                  <button type="button" disabled={enviandoMedico} onClick={() => enviarReceitaParaMedico(showDocForm!, envioMedicoPhone)}
                                     className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black transition disabled:opacity-60">
-                                    {enviandoMedico ? "Enviando..." : "📤 Mandar pro médico assinar (WhatsApp)"}
+                                    {enviandoMedico ? "Enviando..." : "📤 Mandar assinar (WhatsApp)"}
                                   </button>
                                 </div>
                               )}
