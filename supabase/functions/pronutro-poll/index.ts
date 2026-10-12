@@ -493,6 +493,135 @@ function getMediaType(msgType: string): string | null {
   return null;
 }
 
+// ── Captura de comprovante (números internos: Ingrid/Monica) ──────────────────
+// Equipe manda foto do comprovante da maquininha + legenda com o nome do
+// paciente pro próprio WhatsApp da clínica. Lê o comprovante com IA, tenta
+// achar o paciente em pn_leads, e já lança no Financeiro como pendente de
+// revisão -- ninguém mais precisa redigitar nada, só conferir depois.
+async function processarComprovanteInterno(cfg: any, token: string, phone: string, msgs: any[]) {
+  const inbound = msgs.filter((m: any) => !m.fromMe);
+  for (const m of inbound) {
+    const eid = m.messageid || m.id;
+    if (!eid) continue;
+    const mType = getMediaType(m.messageType);
+    if (mType !== "image") continue; // só processa foto; texto solto é ignorado
+
+    // Idempotência: já processamos essa mensagem antes?
+    const { data: jaExiste } = await db.from("pn_financeiro").select("id").eq("whatsapp_msg_id", eid).maybeSingle();
+    if (jaExiste) continue;
+
+    const caption = m.content?.caption || m.text || m.body || "";
+    const mediaUrl = await resolveMediaUrl(token, eid);
+    if (!mediaUrl) {
+      await sendWa(token, phone, "⚠️ Não consegui baixar essa foto do comprovante. Pode mandar de novo?");
+      continue;
+    }
+
+    let extraido: any = null;
+    try {
+      const gptRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content:
+              "Você lê comprovantes de venda de maquininha de cartão (Stone e similares) a partir de foto, e "
+              + "extrai os dados em JSON. A legenda da mensagem (enviada junto) geralmente traz o nome do paciente "
+              + "e às vezes o médico -- use isso como fonte do nome, cruzando com o que aparece na foto se houver.\n"
+              + "Responda SOMENTE um JSON com: "
+              + '{"valor": number, "bandeira": string, "parcelas": number, "data_venda": "YYYY-MM-DD", '
+              + '"id_transacao": string (NSU, AUT, STONE ID ou código similar impresso no comprovante, string vazia se não achar), '
+              + '"nome_paciente": string, "medico_mencionado": string (nome do médico se a legenda citar, senão string vazia)}. '
+              + "Se não conseguir ler algum campo com confiança, deixe string vazia ou 0, nunca invente valor." },
+            { role: "user", content: [
+              { type: "text", text: `Legenda da mensagem: "${caption}"` },
+              { type: "image_url", image_url: { url: mediaUrl } },
+            ] },
+          ],
+        }),
+      });
+      if (gptRes.ok) {
+        const aiData = await gptRes.json();
+        extraido = JSON.parse(aiData.choices[0].message.content);
+      } else {
+        console.error("processarComprovanteInterno: GPT error", gptRes.status);
+      }
+    } catch (err) {
+      console.error("processarComprovanteInterno: erro lendo comprovante", err);
+    }
+
+    if (!extraido || !extraido.valor) {
+      await sendWa(token, phone, "⚠️ Não consegui ler o valor desse comprovante. Lança manual no Financeiro, por favor.");
+      continue;
+    }
+
+    // Tenta achar o paciente pelo nome extraído (fuzzy: primeiro + último nome)
+    let leadMatch: any = null;
+    const nomeBusca = (extraido.nome_paciente || "").trim();
+    if (nomeBusca) {
+      const partes = nomeBusca.split(/\s+/).filter((p: string) => p.length > 2);
+      if (partes.length) {
+        const { data: candidatos } = await db.from("pn_leads")
+          .select("id, name, phone").eq("clinic_slug", cfg.slug)
+          .ilike("name", `%${partes[0]}%`).limit(5);
+        leadMatch = (candidatos || []).find((c: any) =>
+          partes.every((p: string) => (c.name || "").toLowerCase().includes(p.toLowerCase()))
+        ) || (candidatos || [])[0] || null;
+      }
+    }
+
+    // Guarda uma cópia da foto no nosso storage (a URL da UAZAPI expira)
+    let comprovanteUrl: string | null = null;
+    try {
+      const imgRes = await fetch(mediaUrl);
+      if (imgRes.ok) {
+        const buf = new Uint8Array(await imgRes.arrayBuffer());
+        const path = `comprovantes/${cfg.slug}/${eid}.jpg`;
+        const { error: upErr } = await db.storage.from("pn-media").upload(path, buf, { contentType: "image/jpeg", upsert: true });
+        if (!upErr) comprovanteUrl = `${SUPABASE_URL}/storage/v1/object/public/pn-media/${path}`;
+      }
+    } catch (err) {
+      console.error("processarComprovanteInterno: falha ao guardar foto", err);
+    }
+
+    const { error: insErr } = await db.from("pn_financeiro").insert({
+      clinic_slug: cfg.slug,
+      lead_id: leadMatch?.id || null,
+      nome_paciente: nomeBusca || leadMatch?.name || "Paciente não identificado",
+      medico_nome: extraido.medico_mencionado || null,
+      valor: extraido.valor,
+      forma_pagamento: "crédito",
+      bandeira: extraido.bandeira || null,
+      parcelas: extraido.parcelas || 1,
+      data_pagamento: new Date().toISOString(),
+      data_venda: extraido.data_venda || null,
+      registrado_por: "whatsapp-ocr",
+      origem: "whatsapp-ocr",
+      revisado: false,
+      pago: false,
+      comprovante_url: comprovanteUrl,
+      id_transacao_externa: extraido.id_transacao || null,
+      whatsapp_msg_id: eid,
+      observacoes: `Capturado automático via WhatsApp. Legenda original: "${caption}"`,
+    });
+
+    if (insErr) {
+      console.error("processarComprovanteInterno: falha ao inserir financeiro", insErr.message);
+      await sendWa(token, phone, "⚠️ Li o comprovante mas deu erro ao salvar. Avisa o Bruno.");
+      continue;
+    }
+
+    const quemAchou = leadMatch ? `✅ paciente encontrado: ${leadMatch.name}` : "⚠️ paciente não encontrado no sistema, confere o nome";
+    await sendWa(token, phone,
+      `📋 Registrado no Financeiro (pendente de revisão):\n` +
+      `${nomeBusca || "—"} — R$ ${Number(extraido.valor).toFixed(2)} — ${extraido.bandeira || "?"} ${extraido.parcelas || 1}x\n` +
+      quemAchou
+    );
+  }
+}
+
 // ── Poll de UMA clínica ────────────────────────────────────────────────────────
 async function runPollForClinic(cfg: any) {
   const slug = cfg.slug;
@@ -508,6 +637,12 @@ async function runPollForClinic(cfg: any) {
     const token       = resolveToken(cfg);
     const ownerJid    = cfg.uazapi_number;
     const mariaActive = !!cfg.ai_active;
+
+    // Números internos (equipe) -- NUNCA viram lead nem recebem resposta da
+    // Maria. Checado antes de qualquer outra coisa no loop de mensagens.
+    const { data: internosRows } = await db.from("pn_numeros_internos")
+      .select("telefone").eq("clinic_slug", slug).eq("ativo", true);
+    const numerosInternos = new Set((internosRows || []).map((r: any) => r.telefone));
 
     const { data: state } = await db.from("pn_poll_state").select("last_message_timestamp")
       .eq("clinic_slug", slug).maybeSingle();
@@ -593,6 +728,14 @@ async function runPollForClinic(cfg: any) {
      try {
       const phone = chatid.split("@")[0];
       if (!phone || phone === ownerJid) continue;
+
+      if (numerosInternos.has(phone)) {
+        // Mensagem de número interno (equipe): nunca vira lead, nunca aciona
+        // a Maria -- só processa foto de comprovante pro Financeiro.
+        console.log(`pronutro-poll[${slug}]: mensagem de número interno (${phone})`);
+        await processarComprovanteInterno(cfg, token, phone, msgs);
+        continue;
+      }
 
       const inboundMsgs  = msgs.filter((m: any) => !m.fromMe);
       const outboundMsgs = msgs.filter((m: any) => m.fromMe);
