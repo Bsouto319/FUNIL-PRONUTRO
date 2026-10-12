@@ -9,6 +9,7 @@ export default function App() {
   const [clinicConfig, setClinicConfig] = useState<any>(null);
   const [loading, setLoading]       = useState(true);
   const [offline, setOffline]       = useState(!navigator.onLine);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     const goOffline = () => setOffline(true);
@@ -98,7 +99,12 @@ export default function App() {
     // Escuta mudanças subsequentes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      if (event === "PASSWORD_RECOVERY") {
+        // Veio do link de "esqueci minha senha" -- pede a senha nova antes
+        // de liberar o resto do app.
+        setPasswordRecovery(true);
+        setLoading(false);
+      } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         await loadUser(session);
         setLoading(false);
       } else if (event === "SIGNED_OUT") {
@@ -144,7 +150,60 @@ export default function App() {
           MODO OFFLINE — exibindo dados salvos anteriormente
         </div>
       )}
-      {user ? <Dashboard user={user} clinicConfig={clinicConfig} /> : <LoginPage />}
+      {passwordRecovery ? (
+        <NewPasswordForm onDone={async () => {
+          setPasswordRecovery(false);
+          const u = await fetchCurrentUser();
+          if (u) setUser(u);
+        }} />
+      ) : user ? (
+        <Dashboard user={user} clinicConfig={clinicConfig} />
+      ) : (
+        <LoginPage />
+      )}
     </>
+  );
+}
+
+function NewPasswordForm({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) { setError("A senha precisa ter pelo menos 6 caracteres."); return; }
+    setSaving(true);
+    setError("");
+    const { error: err } = await supabase.auth.updateUser({ password });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onDone();
+  }
+
+  return (
+    <div className="h-screen flex items-center justify-center" style={{ background: "linear-gradient(160deg, #f0f9ff 0%, #e8f4fd 40%, #f1f5f9 100%)" }}>
+      <div className="w-full max-w-sm mx-4">
+        <div className="text-center mb-8">
+          <h1 className="text-slate-800 font-black text-2xl">Defina sua nova senha</h1>
+          <p className="text-slate-500 text-sm mt-1">Pra terminar a recuperação de acesso</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Nova senha (mín. 6 caracteres)"
+            autoFocus
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-sm shadow-sm"
+          />
+          {error && <p className="text-rose-500 text-sm text-center">{error}</p>}
+          <button type="submit" disabled={saving}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition shadow-lg shadow-emerald-500/30 disabled:opacity-50">
+            {saving ? "Salvando..." : "Salvar senha e entrar"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 ﻿import { useState } from "react";
-import { signIn } from "../lib/api";
+import { signIn, sendPasswordReset } from "../lib/api";
 
 const SAVED_EMAIL_KEY = "pn-last-email";
 
@@ -8,18 +8,41 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setResetMsg("");
     setLoading(true);
     const { error: err } = await signIn(email, password);
     if (err) {
-      setError("Email ou senha incorretos.");
+      // Mostra o motivo real (senha errada, muitas tentativas, erro de rede...)
+      // em vez de um "email ou senha incorretos" genérico pra tudo -- isso
+      // escondia problemas que não eram de credencial.
+      const msg = err.message || "";
+      if (/invalid.*credentials|invalid.*login/i.test(msg)) {
+        setError("Email ou senha incorretos.");
+      } else if (/rate limit|too many/i.test(msg)) {
+        setError("Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.");
+      } else {
+        setError(`Erro ao entrar: ${msg || "tente novamente."}`);
+      }
     } else {
       localStorage.setItem(SAVED_EMAIL_KEY, email);
     }
     setLoading(false);
+  }
+
+  async function handleForgotPassword() {
+    if (!email) { setError("Digite seu email acima primeiro."); return; }
+    setResetLoading(true);
+    setError("");
+    setResetMsg("");
+    const { error: err } = await sendPasswordReset(email);
+    setResetLoading(false);
+    setResetMsg(err ? `Erro ao enviar: ${err.message}` : "Enviamos um link pra redefinir a senha no seu email.");
   }
 
   return (
@@ -61,7 +84,8 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-rose-400 text-sm text-center">{error}</p>}
+          {error && <p className="text-rose-500 text-sm text-center">{error}</p>}
+          {resetMsg && <p className="text-emerald-600 text-sm text-center">{resetMsg}</p>}
 
           <button
             type="submit"
@@ -69,6 +93,15 @@ export default function LoginPage() {
             className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm transition shadow-lg shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-wait"
           >
             {loading ? "Entrando..." : "Entrar"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={resetLoading}
+            className="w-full text-center text-slate-400 hover:text-slate-600 text-xs font-bold transition disabled:opacity-50"
+          >
+            {resetLoading ? "Enviando..." : "Esqueci minha senha"}
           </button>
         </form>
       </div>
