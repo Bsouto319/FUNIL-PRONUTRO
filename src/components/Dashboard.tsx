@@ -73,6 +73,8 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
 
   const searchRef = useRef(search);
   searchRef.current = search;
+  const searchSeqRef = useRef(0); // evita resposta antiga sobrescrever resultado mais novo
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
   const mutedRef = useRef(muted);
@@ -80,6 +82,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
 
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [showSearchBox, setShowSearchBox] = useState(false);
 
   function playNewLeadSound() {
     if (mutedRef.current) return;
@@ -120,6 +123,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
   }
 
   const load = useCallback(async (q?: string, attempt = 1) => {
+    const mySeq = ++searchSeqRef.current; // resposta só aplica se ainda for a busca mais recente
     try {
       const query = q !== undefined ? q : searchRef.current;
       const timeout = new Promise<never>((_, reject) =>
@@ -129,6 +133,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
         Promise.all([fetchLeads(query, true), fetchStats()]),
         timeout,
       ]);
+      if (mySeq !== searchSeqRef.current) return; // chegou uma busca mais nova antes dessa responder
       const unique = Array.from(new Map(l.map((x: any) => [x.id, x])).values());
       if (unique.length === 0 && attempt === 1) {
         // Retry automático se vier vazio na primeira tentativa (possível timeout Supabase)
@@ -289,7 +294,8 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
   function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value;
     setSearch(v);
-    fetchLeads(v, true).then(setLeads);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => load(v), 300);
   }
 
   async function handleOrganize() {
@@ -617,18 +623,35 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
             </div>
           </div>
 
-          {/* Search + Filtro Hoje */}
+          {/* Busca */}
           {page === "kanban" && (
-            <div className="flex items-center gap-2 ml-2">
-              <div className="relative max-w-xs w-full hidden sm:block">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  value={search}
-                  onChange={handleSearch}
-                  placeholder="Buscar paciente..."
-                  className="w-full pl-9 pr-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 transition"
-                />
-              </div>
+            <div className="relative ml-2 shrink-0">
+              <button
+                onClick={() => setShowSearchBox(s => !s)}
+                title="Buscar paciente"
+                className={`p-2 rounded-xl border transition ${
+                  showSearchBox || search ? "bg-sky-100 border-sky-300 text-sky-700" : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200"
+                }`}
+              >
+                <Search size={15} />
+              </button>
+              {showSearchBox && (
+                <div className="absolute top-full left-0 mt-2 z-50 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-2">
+                  <input
+                    autoFocus
+                    value={search}
+                    onChange={handleSearch}
+                    placeholder="Buscar paciente..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 transition"
+                  />
+                  {search && (
+                    <button onClick={() => { setSearch(""); setShowSearchBox(false); }}
+                      className="w-full mt-1.5 text-center text-[11px] font-bold text-slate-400 hover:text-slate-600 transition">
+                      Limpar busca
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
