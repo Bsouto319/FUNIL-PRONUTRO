@@ -138,6 +138,10 @@ export default function AgendaPage({
   const [apptTipo,       setApptTipo]       = useState("");
   const [apptValor,      setApptValor]      = useState("");
   const [apptSaving,     setApptSaving]     = useState(false);
+  const [apptJaPago,     setApptJaPago]     = useState(false);
+  const [apptForma,      setApptForma]      = useState("PIX");
+  const [apptParcelas,   setApptParcelas]   = useState("1");
+  const [apptBancoId,    setApptBancoId]    = useState("");
   const apptSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load() {
@@ -311,9 +315,26 @@ export default function AgendaPage({
       tipo_procedimento: apptTipo || undefined,
       valor_procedimento: apptValor ? parseFloat(apptValor.replace(",", ".")) : undefined,
     });
+    // Paciente já pagou na hora de agendar -- lança direto no Financeiro,
+    // sem precisar abrir o agendamento de novo depois.
+    if (apptJaPago && apptValor) {
+      const medico = medicos.find(m => m.id === newAppt.medicoId);
+      await insertFinanceiro({
+        lead_id:         apptLead.id,
+        medico_id:       newAppt.medicoId,
+        nome_paciente:   apptLead.name || apptLead.whatsapp_name || "",
+        medico_nome:     medico?.nome || newAppt.medicoNome || "",
+        valor:           parseFloat(apptValor.replace(",", ".")),
+        forma_pagamento: apptForma,
+        parcelas:        parseInt(apptParcelas) || 1,
+        banco_id:        apptBancoId || undefined,
+        data_pagamento:  new Date().toISOString(),
+      } as any);
+    }
     setApptSaving(false);
     setNewAppt(null);
     setApptIndicacao(""); setApptTipo(""); setApptValor("");
+    setApptJaPago(false); setApptForma("PIX"); setApptParcelas("1"); setApptBancoId("");
     load();
   }
 
@@ -332,6 +353,7 @@ export default function AgendaPage({
     const dataHora  = `${selectedDay}T${slotLabel}:00`;
     setNewAppt({ medicoId, medicoNome, dataHora });
     setApptSearch(""); setApptLeads([]); setApptLead(null); setApptDuracao("30");
+    setApptJaPago(false); setApptForma("PIX"); setApptParcelas("1"); setApptBancoId("");
   }
 
   function handleApptSearchChange(text: string) {
@@ -703,33 +725,32 @@ export default function AgendaPage({
           const isCancelled = a.status === "cancelado";
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ background: "rgba(0,0,10,0.75)", backdropFilter: "blur(6px)" }}
+              style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }}
               onClick={e => { if (e.target === e.currentTarget) setExpandedId(null); }}>
-              <div className="w-full max-w-sm rounded-2xl border border-white/10 overflow-hidden"
-                style={{ background: "rgba(10,18,48,0.98)" }}>
+              <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xl">
 
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                   <div>
-                    <p className="text-white font-black text-sm">{a.lead?.name || a.lead?.whatsapp_name || "Paciente"}</p>
-                    {a.lead?.phone && <p className="text-white/30 text-[10px] font-mono">+{a.lead.phone}</p>}
+                    <p className="text-slate-800 font-black text-base">{a.lead?.name || a.lead?.whatsapp_name || "Paciente"}</p>
+                    {a.lead?.phone && <p className="text-slate-400 text-xs font-mono">+{a.lead.phone}</p>}
                   </div>
-                  <button onClick={() => setExpandedId(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40"><X size={15}/></button>
+                  <button onClick={() => setExpandedId(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"><X size={16}/></button>
                 </div>
 
                 <div className="px-4 py-4 space-y-3">
                   {/* Pagamento */}
                   {!isRealizado && !isCancelled && (
                     <div>
-                      <p className="text-white/30 text-[9px] font-black uppercase mb-1.5">Pagamento</p>
+                      <p className="text-slate-500 text-xs font-black uppercase mb-1.5">Pagamento</p>
                       <div className="flex gap-1.5 mb-1.5">
                         <div className="relative flex-1">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs font-bold">R$</span>
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">R$</span>
                           <input value={editValor[a.id]||""} onChange={e=>setEditValor(p=>({...p,[a.id]:e.target.value}))}
                             placeholder="0,00"
-                            className="w-full pl-7 pr-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none" />
+                            className="w-full pl-7 pr-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                         </div>
                         <select value={editForma[a.id]||"PIX"} onChange={e=>{setEditForma(p=>({...p,[a.id]:e.target.value}));setEditParcelas(p=>({...p,[a.id]:"1"}));}}
-                          className="px-1.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none">
+                          className="px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
                           {FORMAS.map(f=><option key={f} value={f}>{f}</option>)}
                         </select>
                       </div>
@@ -739,10 +760,10 @@ export default function AgendaPage({
                         const parc     = parseInt(editParcelas[a.id]) || 1;
                         const mensal   = parc > 0 && valorNum > 0 ? valorNum / parc : 0;
                         return (
-                          <div className="mb-1.5 rounded-lg p-2 border border-violet-500/25" style={{ background:"rgba(139,92,246,0.08)" }}>
+                          <div className="mb-1.5 rounded-lg p-2 border border-violet-200 bg-violet-50">
                             <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-violet-300 text-[9px] font-black uppercase">Parcelamento</span>
-                              {mensal > 0 && parc > 1 && <span className="text-violet-200 text-[10px] font-black">{parc}x de {mensal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>}
+                              <span className="text-violet-600 text-xs font-black uppercase">Parcelamento</span>
+                              {mensal > 0 && parc > 1 && <span className="text-violet-700 text-xs font-black">{parc}x de {mensal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>}
                             </div>
                             <div className="flex gap-1.5 flex-wrap">
                               {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
@@ -750,12 +771,7 @@ export default function AgendaPage({
                                 const isActive = parc === n;
                                 return (
                                   <button key={n} type="button" onClick={()=>setEditParcelas(p=>({...p,[a.id]:String(n)}))}
-                                    className="px-2 py-1 rounded-md text-[9px] font-black transition"
-                                    style={{
-                                      background: isActive?"rgba(139,92,246,0.35)":"rgba(255,255,255,0.05)",
-                                      color:      isActive?"#c4b5fd":"rgba(255,255,255,0.35)",
-                                      border:     `1px solid ${isActive?"rgba(139,92,246,0.5)":"rgba(255,255,255,0.08)"}`,
-                                    }}>
+                                    className={`px-2 py-1 rounded-md text-xs font-black transition border ${isActive ? "bg-violet-600 border-violet-600 text-white" : "bg-white border-slate-200 text-slate-400 hover:text-slate-600"}`}>
                                     {n}x{val > 0 ? ` ${val.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}` : ""}
                                   </button>
                                 );
@@ -767,7 +783,7 @@ export default function AgendaPage({
 
                       {bancos.length > 0 && (
                         <select value={editBanco[a.id]||""} onChange={e=>setEditBanco(p=>({...p,[a.id]:e.target.value}))}
-                          className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:outline-none mb-1.5">
+                          className="w-full px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-1.5">
                           <option value="">— Banco (opcional) —</option>
                           {bancos.map(b=><option key={b.id} value={b.id}>{b.nome}</option>)}
                         </select>
@@ -775,9 +791,8 @@ export default function AgendaPage({
 
                       <button onClick={()=>handleRegistrarPagamento(a)}
                         disabled={!editValor[a.id]||saving===a.id+"_pay"}
-                        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[9px] font-black disabled:opacity-40"
-                        style={{ background:"rgba(16,185,129,0.15)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.3)" }}>
-                        <DollarSign size={10}/>{saving===a.id+"_pay"?"Registrando...":"Registrar Pagamento"}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-black disabled:opacity-40 bg-emerald-600 hover:bg-emerald-500 text-white transition">
+                        <DollarSign size={13}/>{saving===a.id+"_pay"?"Registrando...":"Registrar Pagamento"}
                       </button>
                     </div>
                   )}
@@ -785,9 +800,8 @@ export default function AgendaPage({
                   {/* Marcar Realizado */}
                   {!isRealizado && !isCancelled && (
                     <button onClick={()=>handleRealizado(a)} disabled={saving===a.id}
-                      className="w-full flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black disabled:opacity-40"
-                      style={{ background:"rgba(16,185,129,0.2)",color:"#10b981",border:"1.5px solid rgba(16,185,129,0.4)" }}>
-                      <CheckCircle2 size={13}/>{saving===a.id?"Salvando...":"Marcar como Realizado"}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black disabled:opacity-40 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition">
+                      <CheckCircle2 size={15}/>{saving===a.id?"Salvando...":"Marcar como Realizado"}
                     </button>
                   )}
 
@@ -795,7 +809,7 @@ export default function AgendaPage({
                   <textarea value={editObs[a.id]||""} onChange={e=>setEditObs(p=>({...p,[a.id]:e.target.value}))}
                     onBlur={()=>updateAgendamento(a.id,{observacoes:editObs[a.id]||null})}
                     placeholder="Observações..." rows={2}
-                    className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/20 focus:outline-none resize-none" />
+                    className="w-full px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none" />
                 </div>
               </div>
             </div>
@@ -805,53 +819,52 @@ export default function AgendaPage({
         {/* New appointment mini-modal */}
         {newAppt && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background:"rgba(0,0,10,0.75)", backdropFilter:"blur(6px)" }}
+            style={{ background:"rgba(15,23,42,0.55)", backdropFilter:"blur(4px)" }}
             onClick={e => { if (e.target === e.currentTarget) setNewAppt(null); }}>
-            <div className="w-full max-w-sm rounded-2xl border border-white/10 overflow-hidden"
-              style={{ background:"rgba(10,18,48,0.98)" }}>
+            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
 
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
                 <div className="flex items-center gap-2">
-                  <Plus size={14} className="text-emerald-400" />
-                  <p className="text-white font-black text-sm">Novo Agendamento</p>
+                  <Plus size={16} className="text-emerald-600" />
+                  <p className="text-slate-800 font-black text-base">Novo Agendamento</p>
                 </div>
-                <button onClick={() => setNewAppt(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 transition">
-                  <X size={15}/>
+                <button onClick={() => setNewAppt(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition">
+                  <X size={16}/>
                 </button>
               </div>
 
               {/* Info row */}
-              <div className="px-4 pt-3 pb-2 flex items-center gap-3">
+              <div className="px-4 pt-3 pb-2 flex items-center gap-3 shrink-0">
                 <div className="text-center shrink-0">
-                  <p className="text-white font-black text-2xl leading-none">{newAppt.dataHora.slice(11,16)}</p>
-                  <p className="text-white/30 text-[10px] mt-0.5">
+                  <p className="text-slate-800 font-black text-2xl leading-none">{newAppt.dataHora.slice(11,16)}</p>
+                  <p className="text-slate-400 text-xs mt-0.5">
                     {new Date(newAppt.dataHora.slice(0,10)+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"})}
                   </p>
                 </div>
-                <div className="w-px h-10 bg-white/10 shrink-0"/>
+                <div className="w-px h-10 bg-slate-200 shrink-0"/>
                 <div className="min-w-0">
-                  <p className="text-white/80 text-xs font-bold truncate">{newAppt.medicoNome}</p>
-                  <p className="text-white/30 text-[10px]">Médico / Nutricionista</p>
+                  <p className="text-slate-700 text-sm font-bold truncate">{newAppt.medicoNome}</p>
+                  <p className="text-slate-400 text-xs">Médico / Nutricionista</p>
                 </div>
               </div>
 
-              <div className="px-4 pb-4 space-y-3">
+              <div className="px-4 pb-4 space-y-3 overflow-y-auto">
                 {/* Patient search */}
                 <div className="space-y-1.5">
-                  <p className="text-white/40 text-[10px] font-bold uppercase">Paciente</p>
+                  <p className="text-slate-500 text-xs font-bold uppercase">Paciente</p>
                   {apptLead ? (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                      <div className="w-6 h-6 rounded-full bg-emerald-500/30 flex items-center justify-center text-emerald-300 font-black text-[10px] shrink-0">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                      <div className="w-7 h-7 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-xs shrink-0">
                         {(apptLead.name || "?")[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-emerald-300 text-xs font-bold truncate">{apptLead.name || apptLead.whatsapp_name}</p>
-                        {apptLead.phone && <p className="text-emerald-400/40 text-[10px] font-mono">+{apptLead.phone}</p>}
+                        <p className="text-emerald-700 text-sm font-bold truncate">{apptLead.name || apptLead.whatsapp_name}</p>
+                        {apptLead.phone && <p className="text-emerald-500 text-xs font-mono">+{apptLead.phone}</p>}
                       </div>
                       <button onClick={() => { setApptLead(null); setApptSearch(""); setApptLeads([]); }}
-                        className="text-emerald-400/50 hover:text-emerald-300 transition shrink-0">
-                        <X size={12}/>
+                        className="text-emerald-400 hover:text-emerald-600 transition shrink-0">
+                        <X size={13}/>
                       </button>
                     </div>
                   ) : (
@@ -861,28 +874,27 @@ export default function AgendaPage({
                         onChange={e => handleApptSearchChange(e.target.value)}
                         placeholder="Digite o nome do paciente..."
                         autoFocus
-                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                       />
                       {apptLeads.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-white/10 overflow-hidden z-10 shadow-xl"
-                          style={{ background:"rgba(10,18,60,0.98)" }}>
+                        <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white overflow-hidden z-10 shadow-xl">
                           {apptLeads.slice(0, 6).map(l => (
                             <button key={l.id}
                               onClick={() => { setApptLead(l); setApptSearch(l.name || l.whatsapp_name || ""); setApptLeads([]); }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition text-left border-b border-white/5 last:border-0">
-                              <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/60 font-black text-[10px] shrink-0">
+                              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 transition text-left border-b border-slate-100 last:border-0">
+                              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs shrink-0">
                                 {(l.name || "?")[0].toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-white/80 text-xs font-bold truncate">{l.name || l.whatsapp_name || "—"}</p>
-                                <p className="text-white/30 text-[10px] font-mono">+{l.phone}</p>
+                                <p className="text-slate-700 text-sm font-bold truncate">{l.name || l.whatsapp_name || "—"}</p>
+                                <p className="text-slate-400 text-xs font-mono">+{l.phone}</p>
                               </div>
                             </button>
                           ))}
                         </div>
                       )}
                       {apptSearch.length >= 2 && apptLeads.length === 0 && (
-                        <p className="text-white/20 text-[10px] mt-1.5 pl-1">Nenhum paciente encontrado</p>
+                        <p className="text-slate-300 text-xs mt-1.5 pl-1">Nenhum paciente encontrado</p>
                       )}
                     </div>
                   )}
@@ -890,11 +902,11 @@ export default function AgendaPage({
 
                 {/* Duration */}
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase mb-1.5">Duração</p>
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1.5">Duração</p>
                   <div className="flex gap-1.5">
                     {["15","30","45","60","90"].map(d => (
                       <button key={d} onClick={() => setApptDuracao(d)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition ${apptDuracao===d?"bg-emerald-600/80 border-emerald-500 text-white":"bg-white/5 border-white/10 text-white/50 hover:bg-white/10"}`}>
+                        className={`flex-1 py-1.5 rounded-lg text-sm font-bold border transition ${apptDuracao===d?"bg-emerald-600 border-emerald-600 text-white":"bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
                         {d}min
                       </button>
                     ))}
@@ -903,26 +915,66 @@ export default function AgendaPage({
 
                 {/* Indicação */}
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase mb-1.5">📣 Indicação / Captação</p>
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1.5">📣 Indicação / Captação</p>
                   <input value={apptIndicacao} onChange={e => setApptIndicacao(e.target.value)}
                     placeholder="Ex: Dra. Vanessa, Instagram, indicação..."
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                    className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                 </div>
 
                 {/* Tipo de procedimento + valor */}
                 <div>
-                  <p className="text-white/40 text-[10px] font-bold uppercase mb-1.5">🔬 Procedimento</p>
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1.5">🔬 Procedimento</p>
                   <div className="flex gap-2">
                     <input value={apptTipo} onChange={e => setApptTipo(e.target.value)}
                       placeholder="Tipo de procedimento"
-                      className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                      className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                     <div className="relative w-28">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-xs">R$</span>
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span>
                       <input value={apptValor} onChange={e => setApptValor(e.target.value)}
                         placeholder="0,00"
-                        className="w-full pl-7 pr-2 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs placeholder-white/25 focus:outline-none" />
+                        className="w-full pl-7 pr-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
                     </div>
                   </div>
+                </div>
+
+                {/* Já pagou -- lança direto no Financeiro junto com o agendamento */}
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <button type="button" onClick={() => setApptJaPago(p => !p)}
+                    className="w-full flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-emerald-700 text-sm font-black">
+                      <DollarSign size={15}/> Paciente já pagou?
+                    </span>
+                    <span className={`w-10 h-5 rounded-full relative transition ${apptJaPago ? "bg-emerald-600" : "bg-slate-300"}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${apptJaPago ? "left-5" : "left-0.5"}`}/>
+                    </span>
+                  </button>
+
+                  {apptJaPago && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-emerald-600 text-xs font-bold">Vai pro Financeiro automaticamente ao confirmar.</p>
+                      <select value={apptForma} onChange={e=>{setApptForma(e.target.value); setApptParcelas("1");}}
+                        className="w-full px-2 py-2 rounded-lg bg-white border border-emerald-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
+                        {FORMAS.map(f=><option key={f} value={f}>{f}</option>)}
+                      </select>
+                      {apptForma === "Cartão Crédito" && (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                            <button key={n} type="button" onClick={()=>setApptParcelas(String(n))}
+                              className={`px-2 py-1 rounded-md text-xs font-black transition border ${parseInt(apptParcelas)===n ? "bg-violet-600 border-violet-600 text-white" : "bg-white border-slate-200 text-slate-400 hover:text-slate-600"}`}>
+                              {n}x
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {bancos.length > 0 && (
+                        <select value={apptBancoId} onChange={e=>setApptBancoId(e.target.value)}
+                          className="w-full px-2 py-2 rounded-lg bg-white border border-emerald-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
+                          <option value="">— Banco (opcional) —</option>
+                          {bancos.map(b=><option key={b.id} value={b.id}>{b.nome}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <button onClick={handleCreateAppt} disabled={!apptLead || apptSaving}
