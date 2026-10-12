@@ -513,7 +513,7 @@ export default function Dashboard({ user, clinicConfig }: { user: any; clinicCon
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: "linear-gradient(160deg, #f0f9ff 0%, #e8f4fd 40%, #f1f5f9 100%)" }}>
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-slate-200" style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
+      <header className="relative z-30 flex-shrink-0 border-b border-slate-200" style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)" }}>
         <div className="px-4 sm:px-6 py-2 flex items-center gap-3">
 
           {/* Logo */}

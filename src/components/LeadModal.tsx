@@ -441,7 +441,8 @@ export default function LeadModal({ lead, currentUser, onClose, onUpdated, onGoF
   const medicoSel = medicos.find(m => m.id === medicoId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-white/10 overflow-hidden" style={{ background: "rgba(10,20,60,0.95)" }}>
 
         {/* Header */}

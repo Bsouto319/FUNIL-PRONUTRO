@@ -787,6 +787,13 @@ async function runPollForClinic(cfg: any) {
       };
       if (senderName) upsertData.whatsapp_name = senderName;
 
+      // Paciente "resolvido" (já tinha saído da visão ativa) manda mensagem
+      // nova -> volta pro início do ciclo do Kanban (pedido do Bruno).
+      if (existingLead?.stage === "resolvido") {
+        upsertData.stage = "em_atendimento";
+        console.log(`pronutro-poll[${slug}]: lead ${phone} estava resolvido, reabrindo pra em_atendimento`);
+      }
+
       let lead: any;
       if (isNew) {
         upsertData.stage         = "em_atendimento";

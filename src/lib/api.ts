@@ -489,6 +489,9 @@ export async function createAgendamento(payload: {
     created_at: new Date().toISOString(),
   }).select().single();
   if (error) console.error("createAgendamento", error.message);
+  // Move o card do paciente pro estágio "Agendado" no Kanban -- some da
+  // visão ativa só quando o dia da consulta passar (ver cron de arquivar).
+  await supabase.from("pn_leads").update({ stage: "agendado", updated_at: new Date().toISOString() }).eq("id", payload.lead_id);
   return data;
 }
 
