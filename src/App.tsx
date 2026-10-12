@@ -48,6 +48,16 @@ export default function App() {
         const finalUser = u || fallback;
         if (mounted) {
           setUser(finalUser);
+          // Se o timeout venceu a corrida (conexão lenta), o usuário real
+          // (com o role de verdade) ainda está a caminho -- quando chegar,
+          // corrige a sessão em vez de deixar travado no fallback "staff"
+          // pra sempre (bug real: Monica, role=admin no banco, ficava sem
+          // acesso ao Admin porque a busca demorou mais que 6s).
+          if (!u) {
+            userPromise.then(real => {
+              if (mounted && real) setUser(real);
+            }).catch(() => {});
+          }
           const slug = finalUser?.clinic_slug || "pronutro";
           // Seta defaults imediatos — app abre sem esperar o banco
           setClinicContext(slug, "ProNutro CRM", "Maria");
