@@ -180,16 +180,18 @@ export default function AdminPanel({ user }: { user: any }) {
           body: JSON.stringify({ nome: novoNome, email: novoEmail, password: novoSenha, role: novoRole }),
         }
       );
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) {
-        setUserMsg(`Erro: ${json.error || "tente novamente"}`);
+        setUserMsg(`Erro: ${json.error || json.message || `HTTP ${res.status} -- tente novamente`}`);
       } else {
         setUserMsg("✅ Usuário criado com sucesso!");
         setNovoEmail(""); setNovoNome(""); setNovoSenha(""); setNovoRole("secretaria");
         load();
       }
-    } catch {
-      setUserMsg("Erro de conexão. Tente novamente.");
+    } catch (err: any) {
+      // Mostra o motivo real em vez de "erro de conexao" generico pra
+      // qualquer falha -- maioria das vezes nao e rede, e erro da chamada.
+      setUserMsg(`Erro: ${err?.message || String(err)}`);
     }
     setSavingUser(false);
   }
