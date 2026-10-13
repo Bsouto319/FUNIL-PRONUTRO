@@ -3,10 +3,10 @@ import { signIn, sendPasswordReset } from "../lib/api";
 
 const SAVED_EMAIL_KEY = "pn-last-email";
 
-export default function LoginPage() {
+export default function LoginPage({ initialError }: { initialError?: string }) {
   const [email, setEmail]       = useState(() => localStorage.getItem(SAVED_EMAIL_KEY) || "");
   const [password, setPassword] = useState("");
-  const [error, setError]       = useState("");
+  const [error, setError]       = useState(initialError || "");
   const [loading, setLoading]   = useState(false);
   const [resetMsg, setResetMsg] = useState("");
   const [resetLoading, setResetLoading] = useState(false);

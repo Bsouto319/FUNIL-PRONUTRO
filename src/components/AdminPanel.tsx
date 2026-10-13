@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchUsuarios, fetchMedicos, fetchDisponibilidade, upsertDisponibilidade, upsertMedico, desativarMedico, updateUsuario, fetchBancos, insertBanco, deleteBanco } from "../lib/api";
+import { fetchUsuarios, fetchMedicos, fetchDisponibilidade, upsertDisponibilidade, upsertMedico, desativarMedico, updateUsuario, desativarUsuario, fetchBancos, insertBanco, deleteBanco } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { Plus, RefreshCw, Save, Clock, Edit2, Trash2, X } from "lucide-react";
 import ImportPage from "./ImportPage";
@@ -149,6 +149,12 @@ export default function AdminPanel({ user }: { user: any }) {
     load();
   }
 
+  async function handleDesativarUsuario(id: string, nome: string) {
+    if (!confirm(`Desativar ${nome}? Ela não vai mais conseguir entrar no sistema (o histórico dela fica guardado).`)) return;
+    await desativarUsuario(id);
+    load();
+  }
+
   async function handleEditUser(e: React.FormEvent) {
     e.preventDefault();
     if (!editingUser) return;
@@ -234,7 +240,7 @@ export default function AdminPanel({ user }: { user: any }) {
         ) : tab === "usuarios" ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              {usuarios.map(u => (
+              {usuarios.filter(u => u.ativo !== false).map(u => (
                 <div key={u.id}>
                   {editingUser?.id === u.id ? (
                     <form onSubmit={handleEditUser} className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">
@@ -284,6 +290,12 @@ export default function AdminPanel({ user }: { user: any }) {
                         className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
                         <Edit2 size={12} className="text-slate-500" />
+                      </button>
+                      <button
+                        onClick={() => handleDesativarUsuario(u.id, u.nome)}
+                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-100 border border-slate-200 hover:border-rose-300 transition"
+                        title="Desativar">
+                        <Trash2 size={12} className="text-slate-400 hover:text-rose-600" />
                       </button>
                     </div>
                   )}

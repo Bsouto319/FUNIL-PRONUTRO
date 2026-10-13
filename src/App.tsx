@@ -10,6 +10,7 @@ export default function App() {
   const [loading, setLoading]       = useState(true);
   const [offline, setOffline]       = useState(!navigator.onLine);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [deactivatedMsg, setDeactivatedMsg]     = useState("");
 
   useEffect(() => {
     const goOffline = () => setOffline(true);
@@ -39,6 +40,20 @@ export default function App() {
       return { id: session.user.id, email, nome, role: "staff", ativo: true };
     }
 
+    // Usuário desativado (Admin > Usuários > desativar) não pode logar --
+    // sem isso, "desativar" só escondia da lista, mas a conta continuava
+    // entrando normal.
+    function applyUser(u: any) {
+      if (u?.ativo === false) {
+        setDeactivatedMsg(`A conta de ${u.nome || u.email} foi desativada. Fale com o administrador.`);
+        setUser(null);
+        supabase.auth.signOut();
+        return false;
+      }
+      setUser(u);
+      return true;
+    }
+
     async function loadUser(session: any) {
       if (!session) return;
       const fallback = buildFallback(session);
@@ -48,7 +63,7 @@ export default function App() {
         const u = await Promise.race([userPromise, timeoutPromise]);
         const finalUser = u || fallback;
         if (mounted) {
-          setUser(finalUser);
+          applyUser(finalUser);
           // Se o timeout venceu a corrida (conexão lenta), o usuário real
           // (com o role de verdade) ainda está a caminho -- quando chegar,
           // corrige a sessão em vez de deixar travado no fallback "staff"
@@ -56,7 +71,7 @@ export default function App() {
           // acesso ao Admin porque a busca demorou mais que 6s).
           if (!u) {
             userPromise.then(real => {
-              if (mounted && real) setUser(real);
+              if (mounted && real) applyUser(real);
             }).catch(() => {});
           }
           const slug = finalUser?.clinic_slug || "pronutro";
@@ -159,7 +174,7 @@ export default function App() {
       ) : user ? (
         <Dashboard user={user} clinicConfig={clinicConfig} />
       ) : (
-        <LoginPage />
+        <LoginPage initialError={deactivatedMsg} />
       )}
     </>
   );

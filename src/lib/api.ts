@@ -641,6 +641,15 @@ export async function updateUsuario(id: string, fields: { nome?: string; role?: 
   return !error;
 }
 
+export async function desativarUsuario(id: string): Promise<boolean> {
+  // Soft delete (ativo=false), não apaga de vez -- mantém histórico de
+  // mensagens/auditoria ligado a esse usuário, mesma lógica já usada
+  // pra médico.
+  const { error } = await supabase.from("pn_usuarios").update({ ativo: false }).eq("id", id);
+  if (error) console.error("desativarUsuario", error.message);
+  return !error;
+}
+
 // ── Chat da Equipe ────────────────────────────────────────────────────────────
 
 export async function fetchChatMessages(userId1: string, userId2: string) {
