@@ -64,12 +64,13 @@ async function sendWa(token: string, phone: string, text: string) {
 }
 
 async function sendDocument(token: string, phone: string, base64: string, fileName: string): Promise<boolean> {
-  const res = await fetch(`${UAZAPI_URL}/send/document`, {
+  // UAZAPI descontinuou /send/document (405) -- unificado em /send/media com type.
+  const res = await fetch(`${UAZAPI_URL}/send/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json", token },
-    body: JSON.stringify({ number: phone, document: base64, fileName }),
+    body: JSON.stringify({ number: phone, type: "document", file: base64, docName: fileName }),
   });
-  if (!res.ok) console.error("sendDocument error", res.status);
+  if (!res.ok) console.error("sendDocument error", res.status, await res.text().catch(() => ""));
   return res.ok;
 }
 

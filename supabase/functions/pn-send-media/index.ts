@@ -24,24 +24,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    let endpoint: string;
-    let body: Record<string, string>;
+    // UAZAPI descontinuou os endpoints separados (/send/image, /send/document,
+    // /send/video, /send/ptt -- davam 405) e unificou em /send/media com um
+    // campo "type". Payload: number, type, file (base64 ou URL), docName
+    // (só documento), text (legenda).
+    const body: Record<string, unknown> = { number: phone, type: media_type, file: base64 };
+    if (media_type === "document") body.docName = file_name || "arquivo";
+    else if (file_name) body.text = file_name;
 
-    if (media_type === "ptt") {
-      endpoint = "/send/ptt";
-      body = { number: phone, audio: base64 };
-    } else if (media_type === "image") {
-      endpoint = "/send/image";
-      body = { number: phone, image: base64, caption: file_name || "" };
-    } else if (media_type === "video") {
-      endpoint = "/send/video";
-      body = { number: phone, video: base64, caption: file_name || "" };
-    } else {
-      endpoint = "/send/document";
-      body = { number: phone, document: base64, fileName: file_name || "arquivo" };
-    }
-
-    const uaRes = await fetch(`${UAZAPI_URL}${endpoint}`, {
+    const uaRes = await fetch(`${UAZAPI_URL}/send/media`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token: UAZAPI_TOKEN },
       body: JSON.stringify(body),
@@ -50,7 +41,7 @@ Deno.serve(async (req) => {
     if (!uaRes.ok) {
       const detail = await uaRes.text().catch(() => "");
       console.error("pn-send-media uazapi error", uaRes.status, detail);
-      return new Response(JSON.stringify({ ok: false, error: "uazapi_error" }), {
+      return new Response(JSON.stringify({ ok: false, error: "uazapi_error", status: uaRes.status, detail: detail.slice(0, 500) }), {
         status: 500, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
