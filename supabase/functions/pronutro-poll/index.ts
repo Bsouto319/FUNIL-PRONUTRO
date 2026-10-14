@@ -11,6 +11,16 @@ const db    = createClient(SUPABASE_URL, SUPABASE_KEY);
 const toMs  = (ts: number) => ts > 0 && ts < 1e12 ? ts * 1000 : ts;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+// Nomes exatos como cadastrados em pn_medicos -- usado pra bucketar o lead na
+// coluna certa do kanban quando a mensagem já cita o médico (ex: vindo do link
+// wa.me com texto pré-escrito dos sites do Dr. Celso/Dr. Augusto).
+function detectarMedicoPorTexto(texto: string): string | null {
+  if (/celso/i.test(texto))   return "Dr. Celso Melo";
+  if (/augusto/i.test(texto)) return "Dr. Augusto Margon";
+  if (/gisele/i.test(texto))  return "Gisele Falcão";
+  return null;
+}
+
 // Maria desativada manualmente pra ProNutro (era usada com delay de "digitando" pra evitar
 // banimento da Meta quando ela respondia todo mundo). Trava aqui no código além do toggle
 // em clinic_configs.ai_active — só reativar de propósito quando for religar a IA.
@@ -787,6 +797,13 @@ async function runPollForClinic(cfg: any) {
         updated_at: new Date().toISOString(),
       };
       if (senderName) upsertData.whatsapp_name = senderName;
+
+      // Sites do Dr. Celso e do Dr. Augusto mandam o paciente pro WhatsApp via
+      // link wa.me com mensagem pré-escrita citando o médico ("...consulta com
+      // o Dr. Celso."). Detecta isso na primeira mensagem pra já cair na coluna
+      // certa do kanban em vez de sempre em "Outros".
+      const medicoDetectado = detectarMedicoPorTexto(firstBody);
+      if (medicoDetectado) upsertData.medico_preferido = medicoDetectado;
 
       // Paciente "resolvido" (já tinha saído da visão ativa) manda mensagem
       // nova -> volta pro início do ciclo do Kanban (pedido do Bruno).
