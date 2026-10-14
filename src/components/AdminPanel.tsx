@@ -35,6 +35,7 @@ export default function AdminPanel({ user }: { user: any }) {
   const [editingUser, setEditingUser]   = useState<any | null>(null);
   const [editNome, setEditNome]         = useState("");
   const [editRole, setEditRole]         = useState("");
+  const [editEmail, setEditEmail]       = useState("");
   const [savingEdit, setSavingEdit]     = useState(false);
   const [editMsg, setEditMsg]           = useState("");
 
@@ -160,16 +161,34 @@ export default function AdminPanel({ user }: { user: any }) {
     if (!editingUser) return;
     setSavingEdit(true);
     setEditMsg("");
-    const ok = await updateUsuario(editingUser.id, { nome: editNome, role: editRole });
-    setSavingEdit(false);
-    if (ok) {
+    const emailMudou = editEmail.trim() && editEmail.trim() !== editingUser.email;
+    try {
+      if (emailMudou) {
+        // Email de login mora no Supabase Auth, não só em pn_usuarios --
+        // precisa da service role (edge function) pra trocar os dois.
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL?.trim() || "https://pvphgusjofufwtyiyviu.supabase.co"}/functions/v1/editar-usuario`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+            body: JSON.stringify({ id: editingUser.id, nome: editNome, role: editRole, email: editEmail.trim() }),
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.error) throw new Error(json.error || json.message || `HTTP ${res.status}`);
+      } else {
+        const ok = await updateUsuario(editingUser.id, { nome: editNome, role: editRole });
+        if (!ok) throw new Error("Falha ao salvar");
+      }
       setEditMsg("✅ Salvo!");
       setEditingUser(null);
       load();
-    } else {
-      setEditMsg("❌ Erro ao salvar.");
+    } catch (err: any) {
+      setEditMsg(`❌ Erro: ${err?.message || String(err)}`);
     }
-    setTimeout(() => setEditMsg(""), 3000);
+    setSavingEdit(false);
+    setTimeout(() => setEditMsg(""), 4000);
   }
 
   async function handleCreateUser(e: React.FormEvent) {
@@ -265,8 +284,13 @@ export default function AdminPanel({ user }: { user: any }) {
                             <option value="admin">Admin</option>
                           </select>
                         </div>
+                        <div className="col-span-2">
+                          <label className="block text-slate-500 text-[10px] font-bold mb-1 uppercase">Email (login)</label>
+                          <input required value={editEmail} onChange={e => setEditEmail(e.target.value)} type="email"
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
+                          <p className="text-slate-400 text-[10px] mt-1">Trocar aqui atualiza o login dela também, não só a exibição.</p>
+                        </div>
                       </div>
-                      <p className="text-slate-400 text-[10px]">Email: {u.email} (não editável aqui)</p>
                       {editMsg && <p className={`text-xs font-bold ${editMsg.startsWith("✅") ? "text-emerald-600" : "text-rose-600"}`}>{editMsg}</p>}
                       <button type="submit" disabled={savingEdit}
                         className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition disabled:opacity-50">
@@ -286,7 +310,7 @@ export default function AdminPanel({ user }: { user: any }) {
                         {roleLabel[u.role] || u.role}
                       </span>
                       <button
-                        onClick={() => { setEditingUser(u); setEditNome(u.nome || ""); setEditRole(u.role || "secretaria"); setEditMsg(""); }}
+                        onClick={() => { setEditingUser(u); setEditNome(u.nome || ""); setEditRole(u.role || "secretaria"); setEditEmail(u.email || ""); setEditMsg(""); }}
                         className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
                         title="Editar">
                         <Edit2 size={12} className="text-slate-500" />
