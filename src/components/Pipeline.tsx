@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { STAGES, updateLeadStage } from "../lib/api";
+import { STAGES, EM_ATENDIMENTO_STAGES, DOCTOR_COLUMNS, KANBAN_HEADER, updateLeadStage, updateLeadStageMedico } from "../lib/api";
 import { Bot } from "lucide-react";
 
 interface Props {
@@ -34,23 +34,37 @@ function formatTime(iso: string): string {
   return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hm}`;
 }
 
-const KANBAN_STAGES = STAGES.filter(s => s.kanban);
+const KANBAN_STAGES = STAGES.filter(s => s.kanban); // hoje só "financeiro"
+
+// Coluna = ou um dos 4 médicos (bucket por medico_preferido dentro das fases
+// de "em atendimento") ou um stage real (financeiro).
+type Column =
+  | { type: "medico"; key: string; label: string; assignName: string | null; match: (m?: string) => boolean }
+  | { type: "stage";  key: string; label: string };
+
+const COLUMNS: Column[] = [
+  ...DOCTOR_COLUMNS.map(d => ({ type: "medico" as const, key: d.key, label: d.label, assignName: d.assignName, match: d.match })),
+  ...KANBAN_STAGES.map(s => ({ type: "stage" as const, key: s.key, label: s.label })),
+];
 
 export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
 
-  function handleDrop(e: React.DragEvent, stage: string) {
+  function handleDrop(e: React.DragEvent, col: Column) {
     e.preventDefault();
     if (!dragging) return;
-    updateLeadStage(dragging, stage);
+    if (col.type === "medico") updateLeadStageMedico(dragging, col.assignName);
+    else updateLeadStage(dragging, col.key);
     setDragging(null);
   }
 
   return (
     <div className="h-full flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-slate-200/50 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
-      {KANBAN_STAGES.map(({ key, label, headerBg }) => {
-        const stageLeads = leads
-          .filter(l => l.stage === key)
+      {COLUMNS.map(col => {
+        const colLeads = leads
+          .filter(l => col.type === "medico"
+            ? EM_ATENDIMENTO_STAGES.includes(l.stage) && col.match(l.medico_preferido)
+            : l.stage === col.key)
           .filter(l => {
             if (!dayFilter) return true;
             const ref = l.last_message_at ?? l.created_at;
@@ -60,18 +74,22 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
             return new Date(b.last_message_at ?? b.created_at).getTime() - new Date(a.last_message_at ?? a.created_at).getTime();
           });
 
+        // Card por dentro continua usando o stage real (em_atendimento/financeiro)
+        // pra badge/Maria toggle funcionarem igual já funcionavam.
+        const underlyingStageKey = col.type === "medico" ? "em_atendimento" : col.key;
+
         return (
           <div
-            key={key}
+            key={col.key}
             className="flex-shrink-0 flex flex-col rounded-xl overflow-hidden"
-            style={{ width: `calc((100vw - 88px) / ${KANBAN_STAGES.length})`, minWidth: 160 }}
+            style={{ width: `calc((100vw - 88px) / ${COLUMNS.length})`, minWidth: 160 }}
             onDragOver={e => e.preventDefault()}
-            onDrop={e => handleDrop(e, key)}
+            onDrop={e => handleDrop(e, col)}
           >
             {/* Column header */}
-            <div className="px-3 py-2 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: headerBg }}>
-              <span className="text-sm font-black text-white tracking-wider uppercase leading-none drop-shadow-md">{label}</span>
-              <span className="text-sm font-black bg-black/30 text-white px-2.5 py-0.5 rounded-full min-w-[26px] text-center">{stageLeads.length}</span>
+            <div className="px-3 py-2 flex items-center justify-between flex-shrink-0" style={{ backgroundColor: KANBAN_HEADER }}>
+              <span className="text-sm font-black text-white tracking-wider uppercase leading-none drop-shadow-md">{col.label}</span>
+              <span className="text-sm font-black bg-black/30 text-white px-2.5 py-0.5 rounded-full min-w-[26px] text-center">{colLeads.length}</span>
             </div>
 
             {/* Cards */}
@@ -79,12 +97,12 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
               className="flex-1 overflow-y-auto space-y-2 p-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full"
               style={{ background: "rgba(241,245,249,0.7)" }}
             >
-              {stageLeads.map(lead => (
+              {colLeads.map(lead => (
                 <LeadCard
                   key={lead.id}
                   lead={lead}
-                  stageKey={key}
-                  stageColor={headerBg}
+                  stageKey={underlyingStageKey}
+                  stageColor={KANBAN_HEADER}
                   onSelect={onSelect}
                   onToggleAi={onToggleAi}
                   onDragStart={() => setDragging(lead.id)}
@@ -92,9 +110,9 @@ export default function Pipeline({ leads, onSelect, onToggleAi, dayFilter }: Pro
                   isDragging={dragging === lead.id}
                 />
               ))}
-              {!stageLeads.length && (
-                <div className="rounded-lg border border-dashed p-5 text-center mt-1" style={{ borderColor: `${headerBg}30` }}>
-                  <p className="text-xs font-medium" style={{ color: `${headerBg}60` }}>Vazio</p>
+              {!colLeads.length && (
+                <div className="rounded-lg border border-dashed p-5 text-center mt-1" style={{ borderColor: `${KANBAN_HEADER}30` }}>
+                  <p className="text-xs font-medium" style={{ color: `${KANBAN_HEADER}60` }}>Vazio</p>
                 </div>
               )}
             </div>

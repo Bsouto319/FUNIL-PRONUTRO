@@ -17,18 +17,34 @@ export function getClinicName() { return _clinicName; }
 export function getAgentName()  { return _agentName; }
 
 // Paleta única "da casa" (navy) em todo o board -- igual padrão adotado no LeadPilot/SellPilot.
-const KANBAN_HEADER = "#1f3864";
+export const KANBAN_HEADER = "#1f3864";
 
 // kanban: true = aparece como coluna no Kanban | false = só no seletor de stage
+// "Em Atendimento" saiu do kanban -- virou 4 colunas por médico (Pipeline.tsx,
+// DOCTOR_COLUMNS), já que o que importa pro dia a dia agora é quem tá atendendo,
+// não só "em atendimento" genérico. O stage em si continua existindo pro resto
+// do sistema (relatório, Maria IA, busca) -- só não é mais 1 coluna literal.
 export const STAGES = [
-  { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: KANBAN_HEADER, kanban: true  },
-  { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: KANBAN_HEADER, kanban: true  },
-  { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "em_atendimento", label: "Em Atendimento", color: "bg-sky-400/15 text-sky-300",         headerBg: KANBAN_HEADER, kanban: false },
+  { key: "aguardando",     label: "Aguardando",     color: "bg-pink-400/15 text-pink-300",       headerBg: KANBAN_HEADER, kanban: false },
+  { key: "negociacao",     label: "🤝 Em Negociação", color: "bg-teal-400/15 text-teal-300",       headerBg: KANBAN_HEADER, kanban: false },
   { key: "financeiro",     label: "Financeiro 💰",   color: "bg-yellow-400/15 text-yellow-300",   headerBg: KANBAN_HEADER, kanban: true  },
-  { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "medicacao",      label: "Medicação 💊",    color: "bg-purple-400/15 text-purple-300",   headerBg: KANBAN_HEADER, kanban: false },
   { key: "lista_espera",   label: "⏳ Lista de Espera", color: "bg-orange-400/15 text-orange-300", headerBg: KANBAN_HEADER, kanban: false },
-  { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: KANBAN_HEADER, kanban: true  },
-  { key: "resolvido",      label: "✅ Resolvido",    color: "bg-indigo-400/15 text-indigo-300",   headerBg: KANBAN_HEADER, kanban: true  },
+  { key: "agendado",       label: "Agendado",       color: "bg-emerald-400/15 text-emerald-300", headerBg: KANBAN_HEADER, kanban: false },
+  { key: "resolvido",      label: "✅ Resolvido",    color: "bg-indigo-400/15 text-indigo-300",   headerBg: KANBAN_HEADER, kanban: false },
+];
+
+// Leads nessas fases (variações históricas de "em atendimento") entram nas 4
+// colunas por médico do kanban -- bucketed por medico_preferido, não pelo stage
+// exato (aguardando/negociação/conversando/novo_lead são a mesma fase na prática).
+export const EM_ATENDIMENTO_STAGES = ["em_atendimento", "aguardando", "negociacao", "conversando", "novo_lead"];
+
+export const DOCTOR_COLUMNS = [
+  { key: "dr_celso",   label: "Dr. Celso",   assignName: "Dr. Celso Melo",     match: (m?: string) => /celso/i.test(m || "") },
+  { key: "dr_augusto", label: "Dr. Augusto", assignName: "Dr. Augusto Margon", match: (m?: string) => /augusto/i.test(m || "") },
+  { key: "dra_gisele", label: "Dra. Gisele", assignName: "Gisele Falcão",      match: (m?: string) => /gisele/i.test(m || "") },
+  { key: "outros",     label: "Outros",      assignName: null as string | null, match: (m?: string) => !/celso|augusto|gisele/i.test(m || "") },
 ];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -171,6 +187,17 @@ export async function updateLeadStage(id: string, stage: string) {
     .update({ stage, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) console.error("updateLeadStage", error.message);
+}
+
+// Usado ao soltar um card numa das 4 colunas por médico -- seta o stage
+// canônico "em_atendimento" (normaliza as variações antigas aguardando/
+// negociacao/conversando/novo_lead) e marca o médico escolhido de uma vez.
+export async function updateLeadStageMedico(id: string, medicoPreferido: string | null) {
+  const { error } = await supabase
+    .from("pn_leads")
+    .update({ stage: "em_atendimento", medico_preferido: medicoPreferido, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) console.error("updateLeadStageMedico", error.message);
 }
 
 // ── Respostas Rápidas ─────────────────────────────────────────────────────────
