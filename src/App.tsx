@@ -93,9 +93,23 @@ export default function App() {
         }
       } catch {
         if (mounted) {
-          setUser(fallback);
+          applyUser(fallback);
           setClinicContext("pronutro", "ProNutro CRM", "Maria");
           setClinicConfig({ slug: "pronutro", clinic_name: "ProNutro CRM", agent_name: "Maria" });
+          // fetchCurrentUser() lançou erro de vez (não só demorou) -- tenta
+          // de novo em segundo plano. Se falhar de novo, provavelmente é
+          // sessão salva inválida (ex: trocou a URL/chave do Supabase e o
+          // token antigo não serve mais pro projeto novo) -- desloga pra
+          // forcar um login limpo em vez de deixar travado em "staff" pra
+          // sempre sem nenhuma saida.
+          fetchCurrentUser().then(real => {
+            if (mounted && real) applyUser(real);
+          }).catch(async () => {
+            if (!mounted) return;
+            setDeactivatedMsg("Sua sessão expirou ou ficou inválida. Entre novamente.");
+            setUser(null);
+            await supabase.auth.signOut();
+          });
         }
       }
     }
